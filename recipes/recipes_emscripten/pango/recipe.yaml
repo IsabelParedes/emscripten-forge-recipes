@@ -1,0 +1,58 @@
+context:
+  name: pango
+  version: 1.54.0
+  version_majmin: 1.54
+
+package:
+  name: pango
+  version: ${{ version }}
+
+source:
+  url: https://download.gnome.org/sources/pango/${{ version_majmin }}/pango-${{ version }}.tar.xz
+  sha256: 8a9eed75021ee734d7fc0fdf3a65c3bba51dfefe4ae51a9b414a60c70b2d1ed8
+
+build:
+  number: 0
+
+requirements:
+  build:
+    - meson
+    - ninja
+    - pkg-config
+    - ${{ compiler('c') }}
+    - ${{ compiler('cxx') }}
+    - gobject-introspection
+  host:
+    - cairo
+    - fribidi
+    - glib
+    - harfbuzz
+    - fontconfig
+    - freetype
+    - libpng
+  run:
+    - cairo
+    - fribidi
+    - glib
+    - harfbuzz
+    - fontconfig
+    - freetype
+    - libpng
+
+about:
+  homepage: http://www.pango.org/
+  license: LGPL-2.1-or-later
+  license_file: COPYING
+  summary: Text layout and rendering engine.
+  description: |
+    Pango is a library for laying out and rendering of text, with an emphasis
+    on internationalization. Pango can be used anywhere that text layout is
+    needed, though most of the work on Pango so far has been done in the
+    context of the GTK+ widget toolkit. Pango forms the core of text and font
+    handling for GTK+-2.x.
+  documentation: http://www.pango.org/
+  repository: https://gitlab.gnome.org/GNOME/pango
+
+extra:
+  recipe-maintainers:
+    - IsabelParedes
