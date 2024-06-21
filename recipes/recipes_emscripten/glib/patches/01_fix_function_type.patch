@@ -1,0 +1,27 @@
+diff --git a/glib/deprecated/gcompletion.c b/glib/deprecated/gcompletion.c
+index 3bc77d3..544b283 100644
+--- a/glib/deprecated/gcompletion.c
++++ b/glib/deprecated/gcompletion.c
+@@ -135,7 +135,7 @@ g_completion_new (GCompletionFunc func)
+   gcomp->cache = NULL;
+   gcomp->prefix = NULL;
+   gcomp->func = func;
+-  gcomp->strncmp_func = strncmp;
++  gcomp->strncmp_func = (GCompletionStrncmpFunc)strncmp;
+ 
+   return gcomp;
+ }
+
+diff --git a/glib/tests/completion.c b/glib/tests/completion.c
+index 99ebcd1..ed74a31 100644
+--- a/glib/tests/completion.c
++++ b/glib/tests/completion.c
+@@ -46,7 +46,7 @@ test_completion (void)
+   gchar *prefix;
+ 
+   cmp = g_completion_new (NULL);
+-  g_completion_set_compare (cmp, strncmp);
++  g_completion_set_compare (cmp, (GCompletionStrncmpFunc)strncmp);
+ 
+   items = NULL;
+   items = g_list_append (items, (gpointer) a1);

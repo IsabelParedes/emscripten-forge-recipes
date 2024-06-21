@@ -1,0 +1,22 @@
+diff --git a/glib/gmem.c b/glib/gmem.c
+index 7e19aed..a44de00 100644
+--- a/glib/gmem.c
++++ b/glib/gmem.c
+@@ -69,12 +69,12 @@
+ 
+ /* --- variables --- */
+ static GMemVTable glib_mem_vtable = {
+-  malloc,
+-  realloc,
++  (gpointer (*)(gsize))malloc,
++  (gpointer (*)(gpointer, gsize))realloc,
+   free,
+-  calloc,
+-  malloc,
+-  realloc,
++  (gpointer (*)(gsize, gsize))calloc,
++  (gpointer (*)(gsize))malloc,
++  (gpointer (*)(gpointer, gsize))realloc,
+ };
+ 
+ /**
