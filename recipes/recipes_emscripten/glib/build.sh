@@ -28,6 +28,7 @@ meson setup builddir \
     "${meson_config_args[@]}" \
     --buildtype=release \
     --backend=ninja \
+    --debug \
     --default-library=static \
     --prefix=$PREFIX \
     --wrap-mode=nofallback \
