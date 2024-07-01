@@ -23,19 +23,19 @@ requirements:
     - ${{ compiler('cxx') }}
     - gobject-introspection
   host:
-    - cairo
+    - cairo>=0.18
     - fribidi
     - glib
-    - harfbuzz
-    - fontconfig
+    - harfbuzz>=8.5
+    - fontconfig>=2.12
     - freetype
     - libpng
   run:
-    - cairo
+    - cairo>=0.18
     - fribidi
     - glib
-    - harfbuzz
-    - fontconfig
+    - harfbuzz>=8.5
+    - fontconfig>=2.12
     - freetype
     - libpng
 
