@@ -1,3 +1,7 @@
+#/bin/bash
+
+set -ex
+
 # export LDFLAGS="${LDFLAGS} -sUSE_FREETYPE=1 -sUSE_PTHREADS=0"
 # export PTHREAD_CFLAGS=" "
 
@@ -26,25 +30,25 @@
 # cp fc-scan/fc-scan.wasm $PREFIX/bin/
 # cp fc-validate/fc-validate.wasm $PREFIX/bin/
 
-export CFLAGS="$CFLAGS -s USE_PTHREADS=1 -pthread"
-export LDFLAGS="$LDFLAGS -lpthread"
 
-# emconfigure ./autogen.sh --prefix=$PREFIX
+# Propagate -pthread into CFLAGS to ensure it is compiled with the
+# atomics/bulk-memory features
+CFLAGS="$CFLAGS -pthread"
 
-chmod +x ./configure
+meson_setup_args=(
+    -Dtests=disabled
+    -Ddefault_library=static
+    -Dnls=disabled
+    -Dcache-build=disabled
+    -Ddoc=disabled
+    -Dtools=disabled
+)
 
-emconfigure ./configure  \
+meson setup builddir \
+    ${meson_setup_args[@]} \
     --prefix=$PREFIX \
-    --host=${CHOST} \
-    --cache-file=enabled \
-    --disable-docs \
-    --disable-docbook \
-    --enable-shared=no \
-    --disable-dependency-tracking
+    --buildtype=release \
+    --prefer-static \
+    --cross-file=$RECIPE_DIR/emscripten.meson.cross
 
-emmake make clean
-emmake make
-cp fc-cache/fc-cache  fc-cache/fc-cache-bak
-chmod +x fc-cache/fc-cache
-echo 'exit 0' > fc-cache/fc-cache
-emmake make install
+meson install -C builddir
