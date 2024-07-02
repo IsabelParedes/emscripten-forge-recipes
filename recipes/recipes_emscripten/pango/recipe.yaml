@@ -1,7 +1,7 @@
 context:
   name: pango
-  version: 1.54.0
-  version_majmin: 1.54
+  version: 1.50.14
+  version_majmin: 1.50
 
 package:
   name: pango
@@ -9,7 +9,7 @@ package:
 
 source:
   url: https://download.gnome.org/sources/pango/${{ version_majmin }}/pango-${{ version }}.tar.xz
-  sha256: 8a9eed75021ee734d7fc0fdf3a65c3bba51dfefe4ae51a9b414a60c70b2d1ed8
+  sha256: 1d67f205bfc318c27a29cfdfb6828568df566795df0cb51d2189cde7f2d581e8
 
 build:
   number: 0

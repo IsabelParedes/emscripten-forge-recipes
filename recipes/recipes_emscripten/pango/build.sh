@@ -5,24 +5,24 @@ set -xe
 # get meson to find pkg-config when cross compiling
 export PKG_CONFIG=$BUILD_PREFIX/bin/pkg-config
 
-# need to find gobject-introspection-1.0 as a "native" (build) pkg-config dep
-# meson uses PKG_CONFIG_PATH to search when not cross-compiling and
-# PKG_CONFIG_PATH_FOR_BUILD when cross-compiling,
-# so add the build prefix pkgconfig path to the appropriate variables
-export PKG_CONFIG_PATH_FOR_BUILD=$BUILD_PREFIX/lib/pkgconfig
-export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:$BUILD_PREFIX/lib/pkgconfig
+# # need to find gobject-introspection-1.0 as a "native" (build) pkg-config dep
+# # meson uses PKG_CONFIG_PATH to search when not cross-compiling and
+# # PKG_CONFIG_PATH_FOR_BUILD when cross-compiling,
+# # so add the build prefix pkgconfig path to the appropriate variables
+# export PKG_CONFIG_PATH_FOR_BUILD=$BUILD_PREFIX/lib/pkgconfig
+# export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:$BUILD_PREFIX/lib/pkgconfig
 
-export XDG_DATA_DIRS=${XDG_DATA_DIRS}:$PREFIX/share
+# export XDG_DATA_DIRS=${XDG_DATA_DIRS}:$PREFIX/share
 
-meson_config_args=(
-    -Dintrospection=enabled
-    -Dfontconfig=enabled
-    -Dfreetype=enabled
-    -Ddocumentation=false
-)
+# meson_config_args=(
+#     -Dintrospection=enabled
+#     -Dfontconfig=enabled
+#     -Dfreetype=enabled
+#     -Ddocumentation=false
+# )
 
-# ensure that the post install script is ignored
-export DESTDIR="/"
+# # ensure that the post install script is ignored
+# export DESTDIR="/"
 
 # printenv | grep WASM_BIGINT
 
@@ -61,6 +61,12 @@ export DESTDIR="/"
 # )
 # export GI_CROSS_LAUNCHER=$BUILD_PREFIX/libexec/gi-cross-launcher-load.sh
 
+meson_config_args=(
+    -Dintrospection=disabled
+    -Dfontconfig=enabled
+    -Dfreetype=enabled
+)
+
 meson setup builddir \
     ${MESON_ARGS} \
     "${meson_config_args[@]}" \
@@ -68,9 +74,20 @@ meson setup builddir \
     --default-library=static \
     --prefer-static \
     --prefix=$PREFIX \
-    -Dlibdir=lib \
     --wrap-mode=nofallback \
     --cross-file=$RECIPE_DIR/emscripten.meson.cross
 
-ninja -v -C builddir -j ${CPU_COUNT}
-ninja -C builddir install -j ${CPU_COUNT}
+meson install -C builddir
+
+
+# export CFLAGS="$CFLAGS $(pkg-config --cflags glib-2.0, cairo, pixman-1, fribidi, freetype2, fontconfig, expat) -s USE_PTHREADS"
+# export LDFLAGS="$LDFLAGS $(pkg-config --libs glib-2.0, cairo, pixman-1, fribidi, freetype2, fontconfig, expat) -lpthread"
+
+# meson setup builddir \
+#     --prefix=$PREFIX \
+#     --cross-file=$RECIPE_DIR/emscripten.meson.cross \
+#     --default-library=static \
+#     --buildtype=release \
+#     -Dintrospection=disabled
+
+# meson install -C builddir
