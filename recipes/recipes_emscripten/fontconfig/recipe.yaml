@@ -9,9 +9,6 @@ package:
 source:
   url: http://www.freedesktop.org/software/${{ name }}/release/${{ name }}-${{ version }}.tar.gz
   sha256: f5f359d6332861bd497570848fcb42520964a9e83d5e3abe397b6b6db9bcaaf4
-  # patches:
-  # - patches/syscache-always-valid.diff
-  # - patches/fix-double-sysroot.diff
 
 build:
   number: 0
@@ -25,26 +22,22 @@ requirements:
   host:
   - freetype
   - expat
-      # - xml2 (TODO - or just use expat)
-    # - libiconv  # [win]
-    # - libuuid   # [linux]
-    # - zlib
 
 tests:
 - script:
-    - test -f $PREFIX/lib/libfontconfig.a
-    - test -f $PREFIX/include/fontconfig/fontconfig.h
-    - node $PREFIX/bin/fc-cache --version
-    - node $PREFIX/bin/fc-cat --version
-    - node $PREFIX/bin/fc-list --version
-    - node $PREFIX/bin/fc-match --version
-    - node $PREFIX/bin/fc-pattern --version
-    - node $PREFIX/bin/fc-query --version
-    - node $PREFIX/bin/fc-scan --version
-    - node $PREFIX/bin/fc-validate --version
+  - test -f $PREFIX/lib/libfontconfig.a
+  - test -f $PREFIX/include/fontconfig/fontconfig.h
+  - node $PREFIX/bin/fc-cache --version
+  - node $PREFIX/bin/fc-cat --version
+  - node $PREFIX/bin/fc-list --version
+  - node $PREFIX/bin/fc-match --version
+  - node $PREFIX/bin/fc-pattern --version
+  - node $PREFIX/bin/fc-query --version
+  - node $PREFIX/bin/fc-scan --version
+  - node $PREFIX/bin/fc-validate --version
   requirements:
     build:
-      - nodejs
+    - nodejs
 
 about:
   homepage: http://www.freedesktop.org/wiki/Software/fontconfig/
