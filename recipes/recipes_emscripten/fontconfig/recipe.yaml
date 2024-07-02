@@ -1,5 +1,5 @@
 context:
-  name: "fontconfig"
+  name: fontconfig
   version: 2.15.0
 
 package:
@@ -41,3 +41,7 @@ about:
     customization and application access.
   documentation: https://www.freedesktop.org/software/fontconfig/fontconfig-user.html
   repository: https://cgit.freedesktop.org/fontconfig/
+
+extra:
+  recipe-maintainers:
+  - IsabelParedes
