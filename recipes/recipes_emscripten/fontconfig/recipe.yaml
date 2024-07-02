@@ -1,6 +1,6 @@
 context:
   name: "fontconfig"
-  version: 2.12.6
+  version: 2.14.2
 
 package:
   name: ${{ name }}
@@ -8,10 +8,10 @@ package:
 
 source:
   url: http://www.freedesktop.org/software/${{ name }}/release/${{ name }}-${{ version }}.tar.gz
-  sha256: 064b9ebf060c9e77011733ac9dc0e2ce92870b574cca2405e11f5353a683c334
-  patches:
-  - patches/syscache-always-valid.diff
-  - patches/fix-double-sysroot.diff
+  sha256: 3ba2dd92158718acec5caaf1a716043b5aa055c27b081d914af3ccb40dce8a55
+  # patches:
+  # - patches/syscache-always-valid.diff
+  # - patches/fix-double-sysroot.diff
 
 build:
   number: 0
