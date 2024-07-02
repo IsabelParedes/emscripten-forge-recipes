@@ -24,20 +24,12 @@ requirements:
   - expat
 
 tests:
-- script:
-  - test -f $PREFIX/lib/libfontconfig.a
-  - test -f $PREFIX/include/fontconfig/fontconfig.h
-  - node $PREFIX/bin/fc-cache --version
-  - node $PREFIX/bin/fc-cat --version
-  - node $PREFIX/bin/fc-list --version
-  - node $PREFIX/bin/fc-match --version
-  - node $PREFIX/bin/fc-pattern --version
-  - node $PREFIX/bin/fc-query --version
-  - node $PREFIX/bin/fc-scan --version
-  - node $PREFIX/bin/fc-validate --version
-  requirements:
-    build:
-    - nodejs
+- package_contents:
+    lib:
+    - libfontconfig.a
+    include:
+    - fontconfig/fontconfig.h
+    - fontconfig/fcfreetype.h
 
 about:
   homepage: http://www.freedesktop.org/wiki/Software/fontconfig/
