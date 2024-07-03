@@ -11,4 +11,13 @@ endian = 'little'
 
 [binaries]
 exe_wrapper = 'node'
-pkg-config = 'pkg-config'
+pkg-config = ['pkg-config', '--static']
+c = 'emcc'
+cpp = 'em++'
+ar = 'emar'
+ranlib = 'emranlib'
+
+# Ensure that `-sPTHREAD_POOL_SIZE=4` is not injected into .pc files
+[built-in options]
+c_thread_count = 0
+cpp_thread_count = 0

@@ -2,6 +2,9 @@
 
 set -ex
 
+export CFLAGS="-s USE_PTHREADS"
+LDFLAGS="$LDFLAGS -lpthread"
+
 meson_config_args=(
     -Dfontconfig=enabled
     -Dfreetype=enabled
@@ -13,7 +16,7 @@ meson_config_args=(
     -Dspectre=disabled
     -Dtests=disabled
     -Dgtk2-utils=disabled
-    -Dzlib=disabled # because: error --shared-memory is disallowed by sfnt.c.o
+    -Dzlib=enabled # because: error --shared-memory is disallowed by sfnt.c.o
 )
 
 meson setup builddir \
@@ -23,7 +26,6 @@ meson setup builddir \
     --default-library=static \
     --prefer-static \
     --prefix=$PREFIX \
-    -Dlibdir=lib \
     --wrap-mode=nofallback \
     --cross-file=$RECIPE_DIR/emscripten.meson.cross
 

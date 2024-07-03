@@ -1,26 +1,35 @@
-cp $RECIPE_DIR/patches/CMakeLists.txt .
+# cp $RECIPE_DIR/patches/CMakeLists.txt .
 
-mkdir build
-cd build
+# mkdir build
+# cd build
 
-export CMAKE_PREFIX_PATH=$PREFIX 
-export CMAKE_SYSTEM_PREFIX_PATH=$PREFIX 
+export CFLAGS="-s USE_PTHREADS"
+LDFLAGS="$LDFLAGS -lpthread"
 
-# Configure step
-cmake ${CMAKE_ARGS} ..              \
-    -GNinja                         \
-    -DCMAKE_BUILD_TYPE=Release      \
-    -DCMAKE_PREFIX_PATH=$PREFIX     \
-    -DCMAKE_INSTALL_PREFIX=$PREFIX  \
-    -DBUILD_SHARED_LIBS=OFF \
-    -DBZIP2_SKIP_TOOLS=ON \
-    -DWITH_NODE_TESTS=OFF \
-    -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-    -DCMAKE_PROJECT_INCLUDE=$RECIPE_DIR/overwriteProp.cmake
+# export CMAKE_PREFIX_PATH=$PREFIX 
+# export CMAKE_SYSTEM_PREFIX_PATH=$PREFIX 
+
+# # Configure step
+# cmake ${CMAKE_ARGS} ..              \
+#     -GNinja                         \
+#     -DCMAKE_BUILD_TYPE=Release      \
+#     -DCMAKE_PREFIX_PATH=$PREFIX     \
+#     -DCMAKE_INSTALL_PREFIX=$PREFIX  \
+#     -DBUILD_SHARED_LIBS=OFF \
+#     -DBZIP2_SKIP_TOOLS=ON \
+#     -DWITH_NODE_TESTS=OFF \
+#     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+#     -DCMAKE_PROJECT_INCLUDE=$RECIPE_DIR/overwriteProp.cmake
 
 
-# Build step
-ninja install
+# # Build step
+# ninja install
 
 
-cp $PREFIX/lib/libz_static.a  $PREFIX/lib/libz.a
+# cp $PREFIX/lib/libz_static.a  $PREFIX/lib/libz.a
+
+chmod +x configure
+emconfigure ./configure --static --prefix=$PREFIX
+
+emmake make
+emmake make install

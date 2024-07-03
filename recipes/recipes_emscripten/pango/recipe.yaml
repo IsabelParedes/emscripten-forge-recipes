@@ -23,6 +23,8 @@ requirements:
     - ${{ compiler('cxx') }}
     - gobject-introspection
     - glib
+    - cairo
+    - libexpat
   host:
     - cairo>=0.18
     - fribidi
@@ -31,6 +33,9 @@ requirements:
     - fontconfig>=2.14
     - freetype
     - libpng
+    - graphite2
+    - libffi
+    - expat
   run:
     - cairo>=0.18
     - fribidi

@@ -14,6 +14,9 @@ set -xe
 export PKG_CONFIG_PATH_FOR_BUILD=$BUILD_PREFIX/lib/pkgconfig
 export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:$BUILD_PREFIX/lib/pkgconfig
 
+export CFLAGS="-s USE_PTHREADS"
+LDFLAGS="$LDFLAGS -lpthread"
+
 # export XDG_DATA_DIRS=${XDG_DATA_DIRS}:$PREFIX/share
 
 # meson_config_args=(
@@ -63,12 +66,17 @@ export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:$BUILD_PREFIX/lib/pkgconfig
 # )
 # export GI_CROSS_LAUNCHER=$BUILD_PREFIX/libexec/gi-cross-launcher-load.sh
 
+mv meson.build meson.build.original
+grep -vwE "subdir\('tests'\)" meson.build.original > meson.build
+
 meson_config_args=(
     -Dintrospection=disabled
-    -Dfontconfig=enabled
+    -Dfontconfig=disabled
     -Dfreetype=enabled
     -Dlibthai=disabled
     -Dxft=disabled
+    -Dcairo=disabled
+    -Dinstall-tests=false
 )
 
 meson setup builddir \
