@@ -4,7 +4,7 @@ set -ex
 
 meson_config_args=(
     -Dfontconfig=enabled
-    -Dfreetype=disabled
+    -Dfreetype=enabled
     -Dglib=enabled
     -Dpng=disabled
     -Dxlib=disabled
@@ -12,6 +12,8 @@ meson_config_args=(
     -Dxcb=disabled
     -Dspectre=disabled
     -Dtests=disabled
+    -Dgtk2-utils=disabled
+    -Dzlib=disabled # because: error --shared-memory is disallowed by sfnt.c.o
 )
 
 meson setup builddir \
@@ -25,5 +27,4 @@ meson setup builddir \
     --wrap-mode=nofallback \
     --cross-file=$RECIPE_DIR/emscripten.meson.cross
 
-ninja -v -C builddir -j ${CPU_COUNT}
-ninja -C builddir install -j ${CPU_COUNT}
+meson install -C builddir
