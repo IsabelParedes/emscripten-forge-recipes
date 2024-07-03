@@ -22,12 +22,13 @@ requirements:
     - ${{ compiler('c') }}
     - ${{ compiler('cxx') }}
     - gobject-introspection
+    - glib
   host:
     - cairo>=0.18
     - fribidi
     - glib
     - harfbuzz>=8.5
-    - fontconfig>=2.12
+    - fontconfig>=2.14
     - freetype
     - libpng
   run:
@@ -35,7 +36,7 @@ requirements:
     - fribidi
     - glib
     - harfbuzz>=8.5
-    - fontconfig>=2.12
+    - fontconfig>=2.14
     - freetype
     - libpng
 

@@ -3,14 +3,16 @@
 set -xe
 
 # get meson to find pkg-config when cross compiling
-export PKG_CONFIG=$BUILD_PREFIX/bin/pkg-config
+# export PKG_CONFIG=$BUILD_PREFIX/bin/pkg-config
 
 # # need to find gobject-introspection-1.0 as a "native" (build) pkg-config dep
 # # meson uses PKG_CONFIG_PATH to search when not cross-compiling and
 # # PKG_CONFIG_PATH_FOR_BUILD when cross-compiling,
 # # so add the build prefix pkgconfig path to the appropriate variables
-# export PKG_CONFIG_PATH_FOR_BUILD=$BUILD_PREFIX/lib/pkgconfig
-# export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:$BUILD_PREFIX/lib/pkgconfig
+
+# This is needed to find glib "native" for glib-mkenums
+export PKG_CONFIG_PATH_FOR_BUILD=$BUILD_PREFIX/lib/pkgconfig
+export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:$BUILD_PREFIX/lib/pkgconfig
 
 # export XDG_DATA_DIRS=${XDG_DATA_DIRS}:$PREFIX/share
 
@@ -65,6 +67,8 @@ meson_config_args=(
     -Dintrospection=disabled
     -Dfontconfig=enabled
     -Dfreetype=enabled
+    -Dlibthai=disabled
+    -Dxft=disabled
 )
 
 meson setup builddir \
