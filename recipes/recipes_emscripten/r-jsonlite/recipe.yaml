@@ -1,0 +1,44 @@
+context:
+  name: r-jsonlite
+  version: 1.8.8
+  r_base_version: 4.4.1
+
+package:
+  name: ${{ name }}
+  version: ${{ version }}
+
+source:
+  url: https://cran.r-project.org/src/contrib/jsonlite_${{ version }}.tar.gz
+  sha256: 7de21316984c3ba3d7423d12f43d1c30c716007c5e39bf07e11885e0ceb0caa4
+
+build:
+  number: 0
+  script:
+    content: ${R} CMD build .
+
+requirements:
+  build:
+  - cross-r-base == ${{ r_base_version }}
+  - ${{ compiler('c') }}
+  - make
+  - r-knitr
+  - r-r.rsp
+  host:
+  - r-base == ${{ r_base_version }}
+  - r-knitr
+  - r-r.rsp # CONFLICT: 0.46 requires r-base >=4.2, <4.3
+  run:
+  - r-base == ${{ r_base_version }}
+  - r-knitr
+  - r-r.rsp
+
+about:
+  homepage: https://arxiv.org/abs/1403.2805, https://www.opencpu.org/posts/jsonlite-a-smarter-json-encoder
+  license: MIT
+  license_family: MIT
+  license_file: LICENSE
+  summary: A fast JSON parser and generator optimized for statistical data and the web.
+
+extra:
+  recipe-maintainers:
+  - IsabelParedes
