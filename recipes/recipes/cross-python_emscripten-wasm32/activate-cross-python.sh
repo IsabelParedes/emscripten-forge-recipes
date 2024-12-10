@@ -1,16 +1,22 @@
 #!/bin/bash
+
+set -ex
+
 OLD_PYTHON=$PYTHON
+echo ">>> OLD_PYTHON=$OLD_PYTHON"
+echo ">>> Python version:"
+$OLD_PYTHON --version
+
 unset PYTHON
 MYPYTHON=$BUILD_PREFIX/bin/python
 PY_VER_MAJOR_MINOR=$($MYPYTHON -c 'import sys; print(str(sys.version_info[0])+"."+str(sys.version_info[1]))')
+echo ">>> MYPYTHON=$MYPYTHON"
 
 export EMSDK_PYTHON=$BUILD_PREFIX/bin/python3
 
 # create fake python3 wasm binary
 mkdir -p $PREFIX/bin
 cp $BUILD_PREFIX/bin/python3 $PREFIX/bin
-
-
 
 
 
