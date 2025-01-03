@@ -72,7 +72,6 @@ jobs:
       ################################################################
       - name: Build flang!!!
         shell: bash -el {0}
-        if: github.event_name == 'push'
         run: |
           rattler-build build --log-style plain \
           --package-format tar-bz2 \
