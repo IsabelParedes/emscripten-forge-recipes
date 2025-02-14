@@ -1,5 +1,5 @@
 context:
-  version: 1.0.13-1
+  version: 1.0.14
   name: r-Rcpp
   r_base_version: 4.4.2
 
@@ -7,12 +7,12 @@ source:
   url:
     - https://cran.r-project.org/src/contrib/${{ name[2:] }}_${{ version }}.tar.gz
     - https://cloud.r-project.org/src/contrib/${{ name[2:] }}_${{ version }}.tar.gz
-  sha256: 1d1fc623d27082b5749f9584a9204de410134b6412a192157a3e42e2ba43969a
+  sha256: 74e84a52efb0e3e2713cdbbef5234b5ae1d44b33d32c3c337993e7fc423a8002
   # patches:
   #   - patches/0001-Disable-demangler.patch
 
 build:
-  number: 1
+  number: 0
   script: $R CMD INSTALL $R_ARGS --no-byte-compile .
 
 outputs:
