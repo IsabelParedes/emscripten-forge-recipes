@@ -12,6 +12,8 @@ micromamba install -p $BUILD_PREFIX \
 rm $BUILD_PREFIX/bin/clang # links to clang19
 ln -s $BUILD_PREFIX/bin/clang-18 $BUILD_PREFIX/bin/clang # links to emsdk clang
 
+# ln -s $BUILD_PREFIX/x86_64-conda-linux-gnu/bin/ld $BUILD_PREFIX/bin/ld
+
 # Skip non-working checks
 export r_cv_header_zlib_h=yes
 export r_cv_have_bzlib=yes
@@ -81,6 +83,8 @@ popd
 # WASM BUILD
 #-------------------------------------------------------------------------------
 # Building R for WebAssembly using the R binary from the Linux build.
+
+jjjj
 
 # libz.so has an invalid ELF header which causes an error when looking for
 # opendir during the configure step. Link with libz.a instead.
