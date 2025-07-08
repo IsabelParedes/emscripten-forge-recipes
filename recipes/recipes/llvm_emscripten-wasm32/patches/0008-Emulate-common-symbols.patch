@@ -1,0 +1,28 @@
+diff --git a/llvm/lib/MC/MCWasmStreamer.cpp b/llvm/lib/MC/MCWasmStreamer.cpp
+index d4806b3a5ecb6..9ef80a8bc3b89 100644
+--- a/llvm/lib/MC/MCWasmStreamer.cpp
++++ b/llvm/lib/MC/MCWasmStreamer.cpp
+@@ -150,7 +150,10 @@ bool MCWasmStreamer::emitSymbolAttribute(MCSymbol *S, MCSymbolAttr Attribute) {
+ 
+ void MCWasmStreamer::emitCommonSymbol(MCSymbol *S, uint64_t Size,
+                                       Align ByteAlignment) {
+-  llvm_unreachable("Common symbols are not yet implemented for Wasm");
++  auto *Symbol = cast<MCSymbolWasm>(S);
++  getAssembler().registerSymbol(*Symbol);
++  Symbol->setWeak(true);
++  Symbol->setExternal(true);
+ }
+ 
+ void MCWasmStreamer::emitELFSize(MCSymbol *Symbol, const MCExpr *Value) {
+@@ -159,7 +162,10 @@ void MCWasmStreamer::emitELFSize(MCSymbol *Symbol, const MCExpr *Value) {
+ 
+ void MCWasmStreamer::emitLocalCommonSymbol(MCSymbol *S, uint64_t Size,
+                                            Align ByteAlignment) {
+-  llvm_unreachable("Local common symbols are not yet implemented for Wasm");
++  auto *Symbol = cast<MCSymbolWasm>(S);
++  getAssembler().registerSymbol(*Symbol);
++  Symbol->setWeak(true);
++  Symbol->setExternal(false);
+ }
+ 
+ void MCWasmStreamer::emitIdent(StringRef IdentString) {
