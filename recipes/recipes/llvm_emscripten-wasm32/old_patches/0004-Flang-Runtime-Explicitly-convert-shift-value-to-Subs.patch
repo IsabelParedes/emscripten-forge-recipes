@@ -4,6 +4,8 @@ Date: Fri, 26 Jul 2024 07:34:39 +0000
 Subject: [PATCH 4/7] [Flang][Runtime] Explicitly convert shift value to
  SubscriptValue (#99822)
 
+NOTE: no longer needed
+
 Shift value are within the range of SubscriptValue but the API forces
 them to 64bits. This assumption doesn't hold for 32bit machine, so add
 an explicit cast.

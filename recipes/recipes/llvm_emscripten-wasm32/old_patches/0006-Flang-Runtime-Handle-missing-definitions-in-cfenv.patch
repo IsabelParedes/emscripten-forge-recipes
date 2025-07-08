@@ -3,6 +3,8 @@ From: serge-sans-paille <sguelton@mozilla.com>
 Date: Mon, 29 Jul 2024 10:11:21 +0200
 Subject: [PATCH 6/7] [Flang][Runtime] Handle missing definitions in <cfenv>
 
+NOTE: no longer needed
+
 According to the C99 standard, <fenv.h> may not define FE_INVALID and
 the likes. Even if C++11 mandate them, musl and emscripten don't provide
 them, so handle that case.

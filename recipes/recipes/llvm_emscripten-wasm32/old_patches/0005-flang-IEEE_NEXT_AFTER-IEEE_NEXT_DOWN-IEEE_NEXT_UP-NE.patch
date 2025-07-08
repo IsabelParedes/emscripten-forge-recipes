@@ -4,6 +4,8 @@ Date: Mon, 29 Jul 2024 09:22:36 -0400
 Subject: [PATCH 5/7] [flang] IEEE_NEXT_AFTER, IEEE_NEXT_DOWN, IEEE_NEXT_UP,
  NEAREST (#100782)
 
+NOTE: no longer needed
+
 IEEE_ARITHMETIC intrinsic module procedures IEEE_NEXT_AFTER,
 IEEE_NEXT_DOWN, and IEEE_NEXT_UP, and intrinsic NEAREST return larger or
 smaller values adjacent to their primary REAL argument. The four

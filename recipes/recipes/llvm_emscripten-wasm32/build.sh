@@ -1,7 +1,7 @@
 #!/bin/bash
 
 set -eux
-jjj
+
 export BUILDDIR="_build_flang_llvm"
 
 echo "🧿🧿🧿🧿🧿 CMaking"
