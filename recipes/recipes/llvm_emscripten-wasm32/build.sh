@@ -19,7 +19,7 @@ cmake -S llvm -B $BUILDDIR -GNinja \
         -DCMAKE_VERBOSE_MAKEFILE=ON
 
 echo "♥️♥️♥️♥️♥️ Building"
-cmake --build $BUILDDIR -j6
+cmake --build $BUILDDIR -j2
 
 echo "🔫🔫🔫🔫🔫 Installing"
 cmake --build $BUILDDIR --target install
