@@ -1,0 +1,2116 @@
+From e5c3267567e9cebee500a4d5abdc6b7eae59299b Mon Sep 17 00:00:00 2001
+From: Isabel Paredes <isabel.paredes@quantstack.net>
+Date: Thu, 13 Nov 2025 13:09:54 +0100
+Subject: [PATCH 2/2] Match signatures
+
+---
+ scipy/cluster/_vq.pyx                         |   8 +-
+ scipy/linalg/_decomp_interpolative.pyx        |  14 +-
+ scipy/linalg/_decomp_update.pyx.in            |   8 +-
+ scipy/linalg/_generate_pyx.py                 |   6 +-
+ scipy/linalg/_matfuncs_expm.c                 | 209 +++++++++---------
+ scipy/linalg/_matfuncs_expm.h                 |  24 +-
+ scipy/linalg/cython_blas_signatures.txt       | 182 +++++++--------
+ .../linalg/_dsolve/SuperLU/SRC/ccolumn_bmod.c |   8 +-
+ .../linalg/_dsolve/SuperLU/SRC/cgsrfs.c       |   4 +-
+ .../linalg/_dsolve/SuperLU/SRC/cgstrs.c       |   6 +-
+ .../linalg/_dsolve/SuperLU/SRC/clacon2.c      |   2 +-
+ .../linalg/_dsolve/SuperLU/SRC/cpanel_bmod.c  |   8 +-
+ .../linalg/_dsolve/SuperLU/SRC/csnode_bmod.c  |   4 +-
+ .../linalg/_dsolve/SuperLU/SRC/csp_blas2.c    |  14 +-
+ .../linalg/_dsolve/SuperLU/SRC/dcolumn_bmod.c |   8 +-
+ .../linalg/_dsolve/SuperLU/SRC/dgsrfs.c       |   4 +-
+ .../linalg/_dsolve/SuperLU/SRC/dgstrs.c       |   6 +-
+ .../linalg/_dsolve/SuperLU/SRC/dlacon2.c      |   2 +-
+ .../linalg/_dsolve/SuperLU/SRC/dpanel_bmod.c  |   8 +-
+ .../linalg/_dsolve/SuperLU/SRC/dsnode_bmod.c  |   4 +-
+ .../linalg/_dsolve/SuperLU/SRC/dsp_blas2.c    |  10 +-
+ .../linalg/_dsolve/SuperLU/SRC/scolumn_bmod.c |   8 +-
+ .../linalg/_dsolve/SuperLU/SRC/sgsrfs.c       |   4 +-
+ .../linalg/_dsolve/SuperLU/SRC/sgstrs.c       |   6 +-
+ .../linalg/_dsolve/SuperLU/SRC/slacon2.c      |   2 +-
+ .../linalg/_dsolve/SuperLU/SRC/slu_cdefs.h    |  16 +-
+ .../linalg/_dsolve/SuperLU/SRC/slu_ddefs.h    |  16 +-
+ .../linalg/_dsolve/SuperLU/SRC/slu_sdefs.h    |  16 +-
+ .../linalg/_dsolve/SuperLU/SRC/slu_zdefs.h    |  16 +-
+ .../linalg/_dsolve/SuperLU/SRC/spanel_bmod.c  |   8 +-
+ .../linalg/_dsolve/SuperLU/SRC/ssnode_bmod.c  |   4 +-
+ .../linalg/_dsolve/SuperLU/SRC/ssp_blas2.c    |  10 +-
+ .../linalg/_dsolve/SuperLU/SRC/zcolumn_bmod.c |   8 +-
+ .../linalg/_dsolve/SuperLU/SRC/zgsrfs.c       |   4 +-
+ .../linalg/_dsolve/SuperLU/SRC/zgstrs.c       |   6 +-
+ .../linalg/_dsolve/SuperLU/SRC/zlacon2.c      |   2 +-
+ .../linalg/_dsolve/SuperLU/SRC/zpanel_bmod.c  |   8 +-
+ .../linalg/_dsolve/SuperLU/SRC/zsnode_bmod.c  |   4 +-
+ .../linalg/_dsolve/SuperLU/SRC/zsp_blas2.c    |  14 +-
+ 39 files changed, 353 insertions(+), 338 deletions(-)
+
+diff --git a/scipy/cluster/_vq.pyx b/scipy/cluster/_vq.pyx
+index cb97796..7c9e099 100644
+--- a/scipy/cluster/_vq.pyx
++++ b/scipy/cluster/_vq.pyx
+@@ -24,6 +24,8 @@ ctypedef fused vq_type:
+     float32_t
+     float64_t
+ 
++cdef int char_len = 1
++
+ # Initialize the NumPy C API
+ np.import_array()
+ 
+@@ -47,10 +49,12 @@ cdef inline void cal_M(int nobs, int ncodes, int nfeat, vq_type *obs,
+     # Note that BLAS Fortran ABI uses column-major order
+     if vq_type is float32_t:
+         sgemm("T", "N", &ncodes, &nobs, &nfeat,
+-               &alpha, code_book, &nfeat, obs, &nfeat, &beta, M, &ncodes)
++              &alpha, code_book, &nfeat, obs, &nfeat, &beta, M, &ncodes,
++              &char_len, &char_len)
+     else:
+         dgemm("T", "N", &ncodes, &nobs, &nfeat,
+-              &alpha, code_book, &nfeat, obs, &nfeat, &beta, M, &ncodes)
++              &alpha, code_book, &nfeat, obs, &nfeat, &beta, M, &ncodes,
++              &char_len, &char_len)
+ 
+ 
+ cdef int _vq(vq_type *obs, vq_type *code_book,
+diff --git a/scipy/linalg/_decomp_interpolative.pyx b/scipy/linalg/_decomp_interpolative.pyx
+index 3869471..2fb9ade 100644
+--- a/scipy/linalg/_decomp_interpolative.pyx
++++ b/scipy/linalg/_decomp_interpolative.pyx
+@@ -119,6 +119,8 @@ from scipy.sparse.linalg import LinearOperator
+ from scipy.linalg.cython_lapack cimport dlarfgp, dorm2r, zunm2r, zlarfgp
+ from scipy.linalg.cython_blas cimport dnrm2, dtrsm, dznrm2, ztrsm
+ 
++cdef int char_len = 1
++
+ 
+ __all__ = ['idd_estrank', 'idd_ldiv', 'idd_poweroftwo', 'idd_reconid', 'iddp_aid',
+            'iddp_asvd', 'iddp_id', 'iddp_qrpiv', 'iddp_svd', 'iddr_aid', 'iddr_asvd',
+@@ -585,7 +587,8 @@ def iddp_id(cnp.ndarray[cnp.float64_t, ndim=2] a: NDArray, eps: float):
+     tmp_int = n - krank
+     # SIDE,UPLO,TRANSA,DIAG,M,N,ALPHA,A,LDA,B,LDB
+     dtrsm(<char*>'R', <char*>'L', <char*>'N', <char*>'N',
+-          &tmp_int, &krank, &one, &a[0, 0], &n, &a[0, krank], &n)
++          &tmp_int, &krank, &one, &a[0, 0], &n, &a[0, krank], &n,
++          &char_len, &char_len, &char_len, &char_len)
+ 
+     return krank, np.array(perms), a[:krank, krank:]
+ 
+@@ -969,7 +972,8 @@ def iddr_id(cnp.ndarray[cnp.float64_t, ndim=2] a, int krank):
+     tmp_int = n - krank
+     # SIDE,UPLO,TRANSA,DIAG,M,N,ALPHA,A,LDA,B,LDB
+     dtrsm(<char*>'R', <char*>'L', <char*>'N', <char*>'N',
+-          &tmp_int, &krank, &one, &a[0, 0], &n, &a[0, krank], &n)
++          &tmp_int, &krank, &one, &a[0, 0], &n, &a[0, krank], &n,
++          &char_len, &char_len, &char_len, &char_len)
+ 
+     return perms, a[:krank, krank:]
+ 
+@@ -1509,7 +1513,8 @@ def idzp_id(cnp.ndarray[cnp.complex128_t, mode="c", ndim=2] a, cnp.float64_t eps
+     tmp_int = n - krank
+     # SIDE,UPLO,TRANSA,DIAG,M,N,ALPHA,A,LDA,B,LDB
+     ztrsm(<char*>'R', <char*>'L', <char*>'N', <char*>'N',
+-          &tmp_int, &krank, &one, &a[0, 0], &n, &a[0, krank], &n)
++          &tmp_int, &krank, &one, &a[0, 0], &n, &a[0, krank], &n,
++          &char_len, &char_len, &char_len, &char_len)
+ 
+     return krank, perms, a[:krank, krank:]
+ 
+@@ -1823,7 +1828,8 @@ def idzr_id(cnp.ndarray[cnp.complex128_t, ndim=2] a, int krank):
+     tmp_int = n - krank
+     # SIDE,UPLO,TRANSA,DIAG,M,N,ALPHA,A,LDA,B,LDB
+     ztrsm(<char*>'R', <char*>'L', <char*>'N', <char*>'N',
+-          &tmp_int, &krank, &one, &a[0, 0], &n, &a[0, krank], &n)
++          &tmp_int, &krank, &one, &a[0, 0], &n, &a[0, krank], &n,
++          &char_len, &char_len, &char_len, &char_len)
+ 
+     return perms, a[:krank, krank:]
+ 
+diff --git a/scipy/linalg/_decomp_update.pyx.in b/scipy/linalg/_decomp_update.pyx.in
+index 55a32c1..580396a 100644
+--- a/scipy/linalg/_decomp_update.pyx.in
++++ b/scipy/linalg/_decomp_update.pyx.in
+@@ -60,6 +60,8 @@ DEF ARRAY_ANYORDER = 0
+ 
+ cdef int MEMORY_ERROR = libc.limits.INT_MAX
+ 
++cdef int char_len = 1
++
+ # These are commented out in the numpy support we cimported above.
+ # Here I have declared them as taking void* instead of PyArrayDescr
+ # and object. In this file, only NULL is passed to these parameters.
+@@ -184,7 +186,7 @@ cdef inline void gemv(char* trans, int m, int n, blas_t alpha, blas_t* a,
+     {{for COND, CNAME, C in zip(CONDS, CNAMES, PREFIX)}}
+     {{COND}} blas_t is {{CNAME}}:
+         blas_pointers.{{C}}gemv(trans, &m, &n, &alpha, a, &lda, x, &incx,
+-                &beta, y, &incy)
++                &beta, y, &incy, &char_len)
+     {{endfor}}
+ 
+ cdef inline void gemm(char* transa, char* transb, int m, int n, int k,
+@@ -193,7 +195,7 @@ cdef inline void gemm(char* transa, char* transb, int m, int n, int k,
+     {{for COND, CNAME, C in zip(CONDS, CNAMES, PREFIX)}}
+     {{COND}} blas_t is {{CNAME}}:
+         blas_pointers.{{C}}gemm(transa, transb, &m, &n, &k, &alpha, a, &lda,
+-                b, &ldb, &beta, c, &ldc)
++                b, &ldb, &beta, c, &ldc, &char_len, &char_len)
+     {{endfor}}
+ 
+ cdef inline void trmm(char* side, char* uplo, char* transa, char* diag, int m,
+@@ -201,7 +203,7 @@ cdef inline void trmm(char* side, char* uplo, char* transa, char* diag, int m,
+     {{for COND, CNAME, C in zip(CONDS, CNAMES, PREFIX)}}
+     {{COND}} blas_t is {{CNAME}}:
+         blas_pointers.{{C}}trmm(side, uplo, transa, diag, &m, &n, &alpha, a, &lda,
+-                b, &ldb)
++                b, &ldb, &char_len, &char_len, &char_len, &char_len)
+     {{endfor}}
+ 
+ cdef inline int geqrf(int m, int n, blas_t* a, int lda, blas_t* tau,
+diff --git a/scipy/linalg/_generate_pyx.py b/scipy/linalg/_generate_pyx.py
+index bdecd5f..c3c20b8 100644
+--- a/scipy/linalg/_generate_pyx.py
++++ b/scipy/linalg/_generate_pyx.py
+@@ -183,6 +183,8 @@ cpdef double _test_ddot(double[:] dx, double[:] dy) noexcept nogil:
+         int incy = dy.strides[0] // sizeof(dy[0])
+     return ddot(&n, &dx[0], &incx, &dy[0], &incy)
+ 
++cdef int char_len = 1
++
+ cpdef int _test_dgemm(double alpha, double[:,:] a, double[:,:] b, double beta,
+                 double[:,:] c) except -1 nogil:
+     cdef:
+@@ -225,7 +227,7 @@ cpdef int _test_dgemm(double alpha, double[:,:] a, double[:,:] b, double beta,
+                 raise ValueError("Output array does not have the correct shape.")
+         ldc = (&c[1,0]) - c0 if c.shape[0] > 1 else 1
+         dgemm(transa, transb, &m, &n, &k, &alpha, b0, &lda, a0,
+-                   &ldb, &beta, c0, &ldc)
++                   &ldb, &beta, c0, &ldc, &char_len, &char_len)
+     elif _is_contiguous(c, 0):
+         if _is_contiguous(a, 1):
+             transa = 't'
+@@ -256,7 +258,7 @@ cpdef int _test_dgemm(double alpha, double[:,:] a, double[:,:] b, double beta,
+                 raise ValueError("Output array does not have the correct shape.")
+         ldc = (&c[0,1]) - c0 if c.shape[1] > 1 else 1
+         dgemm(transa, transb, &m, &n, &k, &alpha, a0, &lda, b0,
+-                   &ldb, &beta, c0, &ldc)
++                   &ldb, &beta, c0, &ldc, &char_len, &char_len)
+     else:
+         with gil:
+             raise ValueError("Input 'c' is neither C nor Fortran contiguous.")
+diff --git a/scipy/linalg/_matfuncs_expm.c b/scipy/linalg/_matfuncs_expm.c
+index 8592493..c944305 100644
+--- a/scipy/linalg/_matfuncs_expm.c
++++ b/scipy/linalg/_matfuncs_expm.c
+@@ -244,7 +244,7 @@ snorm1est(float* A, int n)
+         tempint = from;
+         from = to;
+         to = tempint;
+-        sgemv_(opA, &n, &n, &dbl1, A, &n, &work_arr[from], &int1, &dbl0, &work_arr[to], &int1);
++        sgemv_(opA, &n, &n, &dbl1, A, &n, &work_arr[from], &int1, &dbl0, &work_arr[to], &int1, 1);
+         slacn2_(&n, work_arr, &work_arr[to], iwork_arr, &est, &kase, isave);
+     }
+ 
+@@ -276,7 +276,7 @@ dnorm1est(double* A, int n)
+         tempint = from;
+         from = to;
+         to = tempint;
+-        dgemv_(opA, &n, &n, &dbl1, A, &n, &work_arr[from], &int1, &dbl0, &work_arr[to], &int1);
++        dgemv_(opA, &n, &n, &dbl1, A, &n, &work_arr[from], &int1, &dbl0, &work_arr[to], &int1, 1);
+         dlacn2_(&n, work_arr, &work_arr[to], iwork_arr, &est, &kase, isave);
+     }
+ 
+@@ -306,7 +306,7 @@ cnorm1est(EXPM_C* A, int n)
+         tempint = from;
+         from = to;
+         to = tempint;
+-        cgemv_(opA, &n, &n, &dbl1, A, &n, &work_arr[from], &int1, &dbl0, &work_arr[to], &int1);
++        cgemv_(opA, &n, &n, &dbl1, A, &n, &work_arr[from], &int1, &dbl0, &work_arr[to], &int1, 1);
+         clacn2_(&n, work_arr, &work_arr[to], &est, &kase, isave);
+     }
+ 
+@@ -335,7 +335,7 @@ znorm1est(EXPM_Z* A, int n)
+         tempint = from;
+         from = to;
+         to = tempint;
+-        zgemv_(opA, &n, &n, &dbl1, A, &n, &work_arr[from], &int1, &dbl0, &work_arr[to], &int1);
++        zgemv_(opA, &n, &n, &dbl1, A, &n, &work_arr[from], &int1, &dbl0, &work_arr[to], &int1, 1);
+         zlacn2_(&n, work_arr, &work_arr[to], &est, &kase, isave);
+     }
+ 
+@@ -391,14 +391,14 @@ pick_pade_structure_s(float* Am, const Py_ssize_t size_n, int* m, int* s)
+     }
+ 
+     // First spin = normest(|A|, m=1)
+-    sgemv_("N", &n, &n, &dbl1, absA, &n, work_arr, &int1, &dbl0, &work_arr[n], &int1);
++    sgemv_("N", &n, &n, &dbl1, absA, &n, work_arr, &int1, &dbl0, &work_arr[n], &int1, 1);
+     normA = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > normA) { normA = work_arr[n+i]; } }
+ 
+ 
+-    sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[0*n*n], &n, &Am[0*n*n], &n, &dbl0, &Am[1*n*n], &n);
+-    sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[1*n*n], &n, &Am[1*n*n], &n, &dbl0, &Am[2*n*n], &n);
+-    sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[2*n*n], &n, &Am[1*n*n], &n, &dbl0, &Am[3*n*n], &n);
++    sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[0*n*n], &n, &Am[0*n*n], &n, &dbl0, &Am[1*n*n], &n, 1, 1);
++    sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[1*n*n], &n, &Am[1*n*n], &n, &dbl0, &Am[2*n*n], &n, 1, 1);
++    sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[2*n*n], &n, &Am[1*n*n], &n, &dbl0, &Am[3*n*n], &n, 1, 1);
+     d4 = powf(snorm1(&Am[2*n*n], work_arr, n), 0.25);
+     d6 = powf(snorm1(&Am[3*n*n], work_arr, n), 1.0/6.0);
+     eta0 = fmaxf(d4, d6);
+@@ -412,8 +412,8 @@ pick_pade_structure_s(float* Am, const Py_ssize_t size_n, int* m, int* s)
+     // absA * work_arr[:n] = work_arr[n:]
+     for (i = 0; i < 3; i++)
+     {
+-        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1);
+-        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1);
++        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1, 1);
++        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1, 1);
+     }
+     temp = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > temp) { temp = work_arr[n+i]; } }
+@@ -431,8 +431,8 @@ pick_pade_structure_s(float* Am, const Py_ssize_t size_n, int* m, int* s)
+     // 1-norm of A**11
+     for (i = 0; i < 2; i++)
+     {
+-        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1);
+-        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1);
++        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1, 1);
++        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1, 1);
+     }
+     temp = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > temp) { temp = work_arr[n+i]; } }
+@@ -450,7 +450,7 @@ pick_pade_structure_s(float* Am, const Py_ssize_t size_n, int* m, int* s)
+     // -------
+     if (n < 400)
+     {
+-        sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[2*n*n], &n, &Am[2*n*n], &n, &dbl0, &Am[4*n*n], &n);
++        sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[2*n*n], &n, &Am[2*n*n], &n, &dbl0, &Am[4*n*n], &n, 1, 1);
+         d8 = powf(snorm1(&Am[4*n*n], work_arr, n), 0.125);
+     } else {
+         test = snorm1est(&Am[0], 8);
+@@ -464,8 +464,8 @@ pick_pade_structure_s(float* Am, const Py_ssize_t size_n, int* m, int* s)
+     // 1-norm of A**15
+     for (i = 0; i < 2; i++)
+     {
+-        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1);
+-        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1);
++        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1, 1);
++        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1, 1);
+     }
+     temp = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > temp) { temp = work_arr[n+i]; } }
+@@ -484,8 +484,8 @@ pick_pade_structure_s(float* Am, const Py_ssize_t size_n, int* m, int* s)
+     // 1-norm of A**19
+     for (i = 0; i < 2; i++)
+     {
+-        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1);
+-        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1);
++        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1, 1);
++        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1, 1);
+     }
+     temp = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > temp) { temp = work_arr[n+i]; } }
+@@ -496,7 +496,7 @@ pick_pade_structure_s(float* Am, const Py_ssize_t size_n, int* m, int* s)
+     if ((eta2 < theta[3]) && lm == 0)
+     {
+         if (n >= 400) {
+-            sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[2*n*n], &n, &Am[2*n*n], &n, &dbl0, &Am[4*n*n], &n);
++            sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[2*n*n], &n, &Am[2*n*n], &n, &dbl0, &Am[4*n*n], &n, 1, 1);
+         }
+         *m = 9;
+         goto FREE_EXIT;
+@@ -507,7 +507,7 @@ pick_pade_structure_s(float* Am, const Py_ssize_t size_n, int* m, int* s)
+     // Scale-square
+     if (n < 400)
+     {
+-        sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[3*n*n], &n, &Am[2*n*n], &n, &dbl0, &Am[4*n*n], &n);
++        sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[3*n*n], &n, &Am[2*n*n], &n, &dbl0, &Am[4*n*n], &n, 1, 1);
+         d10 = powf(snorm1(&Am[4*n*n], work_arr, n), 0.1);
+     } else {
+         test = snorm1est(&Am[0], 10);
+@@ -535,8 +535,8 @@ pick_pade_structure_s(float* Am, const Py_ssize_t size_n, int* m, int* s)
+     // 1-norm of A**27
+     for (i = 0; i < 4; i++)
+     {
+-        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1);
+-        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1);
++        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1, 1);
++        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1, 1);
+     }
+     temp = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > temp) { temp = work_arr[n+i]; } }
+@@ -612,14 +612,14 @@ pick_pade_structure_d(double* Am, const Py_ssize_t size_n, int* m, int* s)
+     }
+ 
+     // First spin = normest(|A|, m=1)
+-    dgemv_("N", &n, &n, &dbl1, absA, &n, work_arr, &int1, &dbl0, &work_arr[n], &int1);
++    dgemv_("N", &n, &n, &dbl1, absA, &n, work_arr, &int1, &dbl0, &work_arr[n], &int1, 1);
+     normA = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > normA) { normA = work_arr[n+i]; } }
+ 
+ 
+-    dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[0*n*n], &n, &Am[0*n*n], &n, &dbl0, &Am[1*n*n], &n);
+-    dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[1*n*n], &n, &Am[1*n*n], &n, &dbl0, &Am[2*n*n], &n);
+-    dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[2*n*n], &n, &Am[1*n*n], &n, &dbl0, &Am[3*n*n], &n);
++    dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[0*n*n], &n, &Am[0*n*n], &n, &dbl0, &Am[1*n*n], &n, 1, 1);
++    dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[1*n*n], &n, &Am[1*n*n], &n, &dbl0, &Am[2*n*n], &n, 1, 1);
++    dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[2*n*n], &n, &Am[1*n*n], &n, &dbl0, &Am[3*n*n], &n, 1, 1);
+     d4 = pow(dnorm1(&Am[2*n*n], work_arr, n), 0.25);
+     d6 = pow(dnorm1(&Am[3*n*n], work_arr, n), 1.0/6.0);
+     eta0 = fmax(d4, d6);
+@@ -633,8 +633,8 @@ pick_pade_structure_d(double* Am, const Py_ssize_t size_n, int* m, int* s)
+     // absA * work_arr[:n] = work_arr[n:]
+     for (i = 0; i < 3; i++)
+     {
+-        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1);
+-        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1);
++        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1, 1);
++        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1, 1);
+     }
+     temp = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > temp) { temp = work_arr[n+i]; } }
+@@ -652,8 +652,8 @@ pick_pade_structure_d(double* Am, const Py_ssize_t size_n, int* m, int* s)
+     // 1-norm of A**11
+     for (i = 0; i < 2; i++)
+     {
+-        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1);
+-        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1);
++        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1, 1);
++        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1, 1);
+     }
+     temp = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > temp) { temp = work_arr[n+i]; } }
+@@ -671,7 +671,7 @@ pick_pade_structure_d(double* Am, const Py_ssize_t size_n, int* m, int* s)
+     // -------
+     if (n < 400)
+     {
+-        dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[2*n*n], &n, &Am[2*n*n], &n, &dbl0, &Am[4*n*n], &n);
++        dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[2*n*n], &n, &Am[2*n*n], &n, &dbl0, &Am[4*n*n], &n, 1, 1);
+         d8 = pow(dnorm1(&Am[4*n*n], work_arr, n), 0.125);
+     } else {
+         test = dnorm1est(&Am[0], 8);
+@@ -685,8 +685,8 @@ pick_pade_structure_d(double* Am, const Py_ssize_t size_n, int* m, int* s)
+     // 1-norm of A**15
+     for (i = 0; i < 2; i++)
+     {
+-        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1);
+-        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1);
++        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1, 1);
++        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1, 1);
+     }
+     temp = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > temp) { temp = work_arr[n+i]; } }
+@@ -705,8 +705,8 @@ pick_pade_structure_d(double* Am, const Py_ssize_t size_n, int* m, int* s)
+     // 1-norm of A**19
+     for (i = 0; i < 2; i++)
+     {
+-        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1);
+-        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1);
++        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1, 1);
++        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1, 1);
+     }
+     temp = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > temp) { temp = work_arr[n+i]; } }
+@@ -717,7 +717,7 @@ pick_pade_structure_d(double* Am, const Py_ssize_t size_n, int* m, int* s)
+     if ((eta2 < theta[3]) && lm == 0)
+     {
+         if (n >= 400) {
+-            dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[2*n*n], &n, &Am[2*n*n], &n, &dbl0, &Am[4*n*n], &n);
++            dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[2*n*n], &n, &Am[2*n*n], &n, &dbl0, &Am[4*n*n], &n, 1, 1);
+         }
+         *m = 9;
+         goto FREE_EXIT;
+@@ -728,7 +728,7 @@ pick_pade_structure_d(double* Am, const Py_ssize_t size_n, int* m, int* s)
+     // Scale-square
+     if (n < 400)
+     {
+-        dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[3*n*n], &n, &Am[2*n*n], &n, &dbl0, &Am[4*n*n], &n);
++        dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[3*n*n], &n, &Am[2*n*n], &n, &dbl0, &Am[4*n*n], &n, 1, 1);
+         d10 = pow(dnorm1(&Am[4*n*n], work_arr, n), 0.1);
+     } else {
+         test = dnorm1est(&Am[0], 10);
+@@ -756,8 +756,8 @@ pick_pade_structure_d(double* Am, const Py_ssize_t size_n, int* m, int* s)
+     // 1-norm of A**27
+     for (i = 0; i < 4; i++)
+     {
+-        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1);
+-        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1);
++        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1, 1);
++        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1, 1);
+     }
+     temp = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > temp) { temp = work_arr[n+i]; } }
+@@ -835,14 +835,14 @@ pick_pade_structure_c(EXPM_C* Am, const Py_ssize_t size_n, int* m, int* s)
+     }
+ 
+     // First spin = normest(|A|, m=1)
+-    sgemv_("N", &n, &n, &dbl1, absA, &n, work_arr, &int1, &dbl0, &work_arr[n], &int1);
++    sgemv_("N", &n, &n, &dbl1, absA, &n, work_arr, &int1, &dbl0, &work_arr[n], &int1, 1);
+     normA = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > normA) { normA = work_arr[n+i]; } }
+ 
+ 
+-    cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[0*n*n], &n, &Am[0*n*n], &n, &cdbl0, &Am[1*n*n], &n);
+-    cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[1*n*n], &n, &Am[1*n*n], &n, &cdbl0, &Am[2*n*n], &n);
+-    cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[2*n*n], &n, &Am[1*n*n], &n, &cdbl0, &Am[3*n*n], &n);
++    cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[0*n*n], &n, &Am[0*n*n], &n, &cdbl0, &Am[1*n*n], &n, 1, 1);
++    cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[1*n*n], &n, &Am[1*n*n], &n, &cdbl0, &Am[2*n*n], &n, 1, 1);
++    cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[2*n*n], &n, &Am[1*n*n], &n, &cdbl0, &Am[3*n*n], &n, 1, 1);
+     d4 = powf(cnorm1(&Am[2*n*n], work_arr, n), 0.25);
+     d6 = powf(cnorm1(&Am[3*n*n], work_arr, n), 1.0/6.0);
+     eta0 = fmaxf(d4, d6);
+@@ -856,8 +856,8 @@ pick_pade_structure_c(EXPM_C* Am, const Py_ssize_t size_n, int* m, int* s)
+     // absA * work_arr[:n] = work_arr[n:]
+     for (i = 0; i < 3; i++)
+     {
+-        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1);
+-        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1);
++        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1, 1);
++        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1, 1);
+     }
+     temp = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > temp) { temp = work_arr[n+i]; } }
+@@ -875,8 +875,8 @@ pick_pade_structure_c(EXPM_C* Am, const Py_ssize_t size_n, int* m, int* s)
+     // 1-norm of A**11
+     for (i = 0; i < 2; i++)
+     {
+-        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1);
+-        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1);
++        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1, 1);
++        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1, 1);
+     }
+     temp = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > temp) { temp = work_arr[n+i]; } }
+@@ -894,7 +894,7 @@ pick_pade_structure_c(EXPM_C* Am, const Py_ssize_t size_n, int* m, int* s)
+     // -------
+     if (n < 400)
+     {
+-        cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[2*n*n], &n, &Am[2*n*n], &n, &cdbl0, &Am[4*n*n], &n);
++        cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[2*n*n], &n, &Am[2*n*n], &n, &cdbl0, &Am[4*n*n], &n, 1, 1);
+         d8 = powf(cnorm1(&Am[4*n*n], work_arr, n), 0.125);
+     } else {
+         test = cnorm1est(&Am[0], 8);
+@@ -908,8 +908,8 @@ pick_pade_structure_c(EXPM_C* Am, const Py_ssize_t size_n, int* m, int* s)
+     // 1-norm of A**15
+     for (i = 0; i < 2; i++)
+     {
+-        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1);
+-        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1);
++        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1, 1);
++        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1, 1);
+     }
+     temp = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > temp) { temp = work_arr[n+i]; } }
+@@ -928,8 +928,8 @@ pick_pade_structure_c(EXPM_C* Am, const Py_ssize_t size_n, int* m, int* s)
+     // 1-norm of A**19
+     for (i = 0; i < 2; i++)
+     {
+-        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1);
+-        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1);
++        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1, 1);
++        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1, 1);
+     }
+     temp = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > temp) { temp = work_arr[n+i]; } }
+@@ -940,7 +940,7 @@ pick_pade_structure_c(EXPM_C* Am, const Py_ssize_t size_n, int* m, int* s)
+     if ((eta2 < theta[3]) && lm == 0)
+     {
+         if (n >= 400) {
+-            cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[2*n*n], &n, &Am[2*n*n], &n, &cdbl0, &Am[4*n*n], &n);
++            cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[2*n*n], &n, &Am[2*n*n], &n, &cdbl0, &Am[4*n*n], &n, 1, 1);
+         }
+         *m = 9;
+         goto FREE_EXIT;
+@@ -951,7 +951,7 @@ pick_pade_structure_c(EXPM_C* Am, const Py_ssize_t size_n, int* m, int* s)
+     // Scale-square
+     if (n < 400)
+     {
+-        cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[3*n*n], &n, &Am[2*n*n], &n, &cdbl0, &Am[4*n*n], &n);
++        cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[3*n*n], &n, &Am[2*n*n], &n, &cdbl0, &Am[4*n*n], &n, 1, 1);
+         d10 = powf(cnorm1(&Am[4*n*n], work_arr, n), 0.1);
+     } else {
+         test = cnorm1est(&Am[0], 10);
+@@ -979,8 +979,8 @@ pick_pade_structure_c(EXPM_C* Am, const Py_ssize_t size_n, int* m, int* s)
+     // 1-norm of A**27
+     for (i = 0; i < 4; i++)
+     {
+-        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1);
+-        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1);
++        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1, 1);
++        sgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1, 1);
+     }
+     temp = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > temp) { temp = work_arr[n+i]; } }
+@@ -1065,14 +1065,14 @@ pick_pade_structure_z(EXPM_Z* Am, const Py_ssize_t size_n, int* m, int* s)
+     }
+ 
+     // First spin = normest(|A|, m=1)
+-    dgemv_("N", &n, &n, &dbl1, absA, &n, work_arr, &int1, &dbl0, &work_arr[n], &int1);
++    dgemv_("N", &n, &n, &dbl1, absA, &n, work_arr, &int1, &dbl0, &work_arr[n], &int1, 1);
+     normA = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > normA) { normA = work_arr[n+i]; } }
+ 
+ 
+-    zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[0*n*n], &n, &Am[0*n*n], &n, &cdbl0, &Am[1*n*n], &n);
+-    zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[1*n*n], &n, &Am[1*n*n], &n, &cdbl0, &Am[2*n*n], &n);
+-    zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[2*n*n], &n, &Am[1*n*n], &n, &cdbl0, &Am[3*n*n], &n);
++    zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[0*n*n], &n, &Am[0*n*n], &n, &cdbl0, &Am[1*n*n], &n, 1, 1);
++    zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[1*n*n], &n, &Am[1*n*n], &n, &cdbl0, &Am[2*n*n], &n, 1, 1);
++    zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[2*n*n], &n, &Am[1*n*n], &n, &cdbl0, &Am[3*n*n], &n, 1, 1);
+     d4 = pow(znorm1(&Am[2*n*n], work_arr, n), 0.25);
+     d6 = pow(znorm1(&Am[3*n*n], work_arr, n), 1.0/6.0);
+     eta0 = fmax(d4, d6);
+@@ -1086,8 +1086,8 @@ pick_pade_structure_z(EXPM_Z* Am, const Py_ssize_t size_n, int* m, int* s)
+     // absA * work_arr[:n] = work_arr[n:]
+     for (i = 0; i < 3; i++)
+     {
+-        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1);
+-        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1);
++        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1, 1);
++        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1, 1);
+     }
+     temp = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > temp) { temp = work_arr[n+i]; } }
+@@ -1105,8 +1105,8 @@ pick_pade_structure_z(EXPM_Z* Am, const Py_ssize_t size_n, int* m, int* s)
+     // 1-norm of A**11
+     for (i = 0; i < 2; i++)
+     {
+-        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1);
+-        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1);
++        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1, 1);
++        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1, 1);
+     }
+     temp = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > temp) { temp = work_arr[n+i]; } }
+@@ -1124,7 +1124,7 @@ pick_pade_structure_z(EXPM_Z* Am, const Py_ssize_t size_n, int* m, int* s)
+     // -------
+     if (n < 400)
+     {
+-        zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[2*n*n], &n, &Am[2*n*n], &n, &cdbl0, &Am[4*n*n], &n);
++        zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[2*n*n], &n, &Am[2*n*n], &n, &cdbl0, &Am[4*n*n], &n, 1, 1);
+         d8 = pow(znorm1(&Am[4*n*n], work_arr, n), 0.125);
+     } else {
+         test = znorm1est(&Am[0], 8);
+@@ -1138,8 +1138,8 @@ pick_pade_structure_z(EXPM_Z* Am, const Py_ssize_t size_n, int* m, int* s)
+     // 1-norm of A**15
+     for (i = 0; i < 2; i++)
+     {
+-        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1);
+-        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1);
++        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1, 1);
++        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1, 1);
+     }
+     temp = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > temp) { temp = work_arr[n+i]; } }
+@@ -1158,8 +1158,8 @@ pick_pade_structure_z(EXPM_Z* Am, const Py_ssize_t size_n, int* m, int* s)
+     // 1-norm of A**19
+     for (i = 0; i < 2; i++)
+     {
+-        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1);
+-        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1);
++        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1, 1);
++        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1, 1);
+     }
+     temp = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > temp) { temp = work_arr[n+i]; } }
+@@ -1172,7 +1172,7 @@ pick_pade_structure_z(EXPM_Z* Am, const Py_ssize_t size_n, int* m, int* s)
+         // Add the deferred matmul for m=9
+         if (n >= 400)
+         {
+-            zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[2*n*n], &n, &Am[2*n*n], &n, &cdbl0, &Am[4*n*n], &n);
++            zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[2*n*n], &n, &Am[2*n*n], &n, &cdbl0, &Am[4*n*n], &n, 1, 1);
+         }
+         *m = 9;
+         goto FREE_EXIT;
+@@ -1183,7 +1183,7 @@ pick_pade_structure_z(EXPM_Z* Am, const Py_ssize_t size_n, int* m, int* s)
+     // Scale-square
+     if (n < 400)
+     {
+-        zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[3*n*n], &n, &Am[2*n*n], &n, &cdbl0, &Am[4*n*n], &n);
++        zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[3*n*n], &n, &Am[2*n*n], &n, &cdbl0, &Am[4*n*n], &n, 1, 1);
+         d10 = pow(znorm1(&Am[4*n*n], work_arr, n), 0.1);
+     } else {
+         test = znorm1est(&Am[0], 10);
+@@ -1211,8 +1211,8 @@ pick_pade_structure_z(EXPM_Z* Am, const Py_ssize_t size_n, int* m, int* s)
+     // 1-norm of A**27
+     for (i = 0; i < 4; i++)
+     {
+-        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1);
+-        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1);
++        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[n], &int1, &dbl0, &work_arr[0], &int1, 1);
++        dgemv_("N", &n, &n, &dbl1, absA, &n, &work_arr[0], &int1, &dbl0, &work_arr[n], &int1, 1);
+     }
+     temp = 0.0;
+     for (i = 0; i < n; i++)  { if (work_arr[n+i] > temp) { temp = work_arr[n+i]; } }
+@@ -1282,7 +1282,7 @@ pade_UV_calc_s(float* Am, const Py_ssize_t size_n, const int m, int* info)
+ 
+         // U = Am[0] @ Am[1] + b[1]*Am[0]
+         scopy_(&n2, Am, &int1, &Am[3*n2], &int1);
+-        sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[n2], &n, Am, &n, &b[1], &Am[3*n2], &n);
++        sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[n2], &n, Am, &n, &b[1], &Am[3*n2], &n, 1, 1);
+ 
+         // V = b[2]*Am[1] + b[0]*I_n
+         sscal_(&n2, &b[2], &Am[n2], &int1);
+@@ -1310,7 +1310,7 @@ pade_UV_calc_s(float* Am, const Py_ssize_t size_n, const int m, int* info)
+             }
+         }
+         // Am[0] @ (1.0*Am[2] + 420*Am[1] + 15120*I)
+-        sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[4*n2], &n, Am, &n, &dbl0, &Am[3*n2], &n);
++        sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[4*n2], &n, Am, &n, &dbl0, &Am[3*n2], &n, 1, 1);
+ 
+         // V
+         for (i = 0; i < n; i++)
+@@ -1359,7 +1359,7 @@ pade_UV_calc_s(float* Am, const Py_ssize_t size_n, const int m, int* info)
+         }
+ 
+         // Now overwrite Am[3] with U
+-        sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[4*n2], &n, Am, &n, &dbl0, &Am[3*n2], &n);
++        sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[4*n2], &n, Am, &n, &dbl0, &Am[3*n2], &n, 1, 1);
+ 
+     } else if (m == 9) {
+ 
+@@ -1395,7 +1395,7 @@ pade_UV_calc_s(float* Am, const Py_ssize_t size_n, const int m, int* info)
+             }
+         }
+         // Now overwrite Am[3] with U
+-        sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[4*n2], &n, Am, &n, &dbl0, &Am[3*n2], &n);
++        sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[4*n2], &n, Am, &n, &dbl0, &Am[3*n2], &n, 1, 1);
+ 
+     } else if (m == 13) {
+         b[0]  = 64764752532480000.0;
+@@ -1450,11 +1450,11 @@ pade_UV_calc_s(float* Am, const Py_ssize_t size_n, const int m, int* info)
+         }
+ 
+         // V = P @ Q + R
+-        sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[4*n2], &n, &Am[3*n2], &n, &dbl1, &Am[1*n2], &n);
++        sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[4*n2], &n, &Am[3*n2], &n, &dbl1, &Am[1*n2], &n, 1, 1);
+ 
+         // U = K @ (L @ M + N)
+-        sgemm_("N", "N", &n, &n, &n, &dbl1, work, &n, &Am[3*n2], &n, &dbl1, &Am[2*n2], &n);
+-        sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[2*n2], &n, Am, &n, &dbl1, &Am[3*n2], &n);
++        sgemm_("N", "N", &n, &n, &n, &dbl1, work, &n, &Am[3*n2], &n, &dbl1, &Am[2*n2], &n, 1, 1);
++        sgemm_("N", "N", &n, &n, &n, &dbl1, &Am[2*n2], &n, Am, &n, &dbl1, &Am[3*n2], &n, 1, 1);
+ 
+         PyMem_RawFree(work);
+     }
+@@ -1467,7 +1467,7 @@ pade_UV_calc_s(float* Am, const Py_ssize_t size_n, const int m, int* info)
+     swap_cf_s(&Am[3*n2], &Am[2*n2], n, n, n);
+ 
+     sgetrf_(&n, &n, &Am[n2], &n, ipiv, info);
+-    sgetrs_("T", &n, &n, &Am[n2], &n, ipiv, &Am[2*n2], &n, info);
++    sgetrs_("T", &n, &n, &Am[n2], &n, ipiv, &Am[2*n2], &n, info, 1);
+     PyMem_RawFree(ipiv);
+     sscal_(&n2, &two, &Am[2*n2], &int1);
+     for (i = 0; i < n; i++) { Am[2*n2 + n*i + i] += 1.0; }
+@@ -1493,6 +1493,7 @@ pade_UV_calc_d(double* Am, const Py_ssize_t size_n, const int m, int* info)
+     int* ipiv = PyMem_RawMalloc(n*sizeof(int));
+     if (!ipiv) { *info = -11; return; }
+ 
++
+     if (m == 3)
+     {
+         // Am[2], Am[3] and Am[4] are free
+@@ -1505,7 +1506,7 @@ pade_UV_calc_d(double* Am, const Py_ssize_t size_n, const int m, int* info)
+ 
+         // U = Am[0] @ Am[1] + b[1]*Am[0]
+         dcopy_(&n2, Am, &int1, &Am[3*n2], &int1);
+-        dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[n2], &n, Am, &n, &b[1], &Am[3*n2], &n);
++        dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[n2], &n, Am, &n, &b[1], &Am[3*n2], &n, 1, 1);
+ 
+         // V = b[2]*Am[1] + b[0]*I_n
+         dscal_(&n2, &b[2], &Am[n2], &int1);
+@@ -1534,7 +1535,7 @@ pade_UV_calc_d(double* Am, const Py_ssize_t size_n, const int m, int* info)
+             }
+         }
+         // Am[0] @ (1.0*Am[2] + 420*Am[1] + 15120*I)
+-        dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[4*n2], &n, Am, &n, &dbl0, &Am[3*n2], &n);
++        dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[4*n2], &n, Am, &n, &dbl0, &Am[3*n2], &n, 1, 1);
+ 
+         // V
+         for (i = 0; i < n; i++)
+@@ -1583,7 +1584,7 @@ pade_UV_calc_d(double* Am, const Py_ssize_t size_n, const int m, int* info)
+         }
+ 
+         // Now overwrite Am[3] with U
+-        dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[4*n2], &n, Am, &n, &dbl0, &Am[3*n2], &n);
++        dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[4*n2], &n, Am, &n, &dbl0, &Am[3*n2], &n, 1, 1);
+ 
+     } else if (m == 9) {
+ 
+@@ -1619,7 +1620,7 @@ pade_UV_calc_d(double* Am, const Py_ssize_t size_n, const int m, int* info)
+             }
+         }
+         // Now overwrite Am[3] with U
+-        dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[4*n2], &n, Am, &n, &dbl0, &Am[3*n2], &n);
++        dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[4*n2], &n, Am, &n, &dbl0, &Am[3*n2], &n, 1, 1);
+ 
+     } else if (m == 13) {
+         b[0]  = 64764752532480000.0;
+@@ -1674,11 +1675,11 @@ pade_UV_calc_d(double* Am, const Py_ssize_t size_n, const int m, int* info)
+         }
+ 
+         // V = P @ Q + R
+-        dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[4*n2], &n, &Am[3*n2], &n, &dbl1, &Am[n2], &n);
++        dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[4*n2], &n, &Am[3*n2], &n, &dbl1, &Am[n2], &n, 1, 1);
+ 
+         // U = K @ (L @ M + N)
+-        dgemm_("N", "N", &n, &n, &n, &dbl1, work, &n, &Am[3*n2], &n, &dbl1, &Am[2*n2], &n);
+-        dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[2*n2], &n, Am, &n, &dbl1, &Am[3*n2], &n);
++        dgemm_("N", "N", &n, &n, &n, &dbl1, work, &n, &Am[3*n2], &n, &dbl1, &Am[2*n2], &n, 1, 1);
++        dgemm_("N", "N", &n, &n, &n, &dbl1, &Am[2*n2], &n, Am, &n, &dbl1, &Am[3*n2], &n, 1, 1);
+ 
+         PyMem_RawFree(work);
+     }
+@@ -1691,7 +1692,7 @@ pade_UV_calc_d(double* Am, const Py_ssize_t size_n, const int m, int* info)
+     swap_cf_d(&Am[3*n2], &Am[2*n2], n, n, n);
+ 
+     dgetrf_(&n, &n, &Am[n2], &n, ipiv, info);
+-    dgetrs_("T", &n, &n, &Am[n2], &n, ipiv, &Am[2*n2], &n, info);
++    dgetrs_("T", &n, &n, &Am[n2], &n, ipiv, &Am[2*n2], &n, info, 1);
+     PyMem_RawFree(ipiv);
+     dscal_(&n2, &two, &Am[2*n2], &int1);
+     for (i = 0; i < n; i++) { Am[2*n2 + n*i + i] += 1.0; }
+@@ -1736,7 +1737,7 @@ pade_UV_calc_c(EXPM_C* Am, const Py_ssize_t size_n, const int m, int* info)
+ 
+         // U = Am[0] @ Am[1] + b[1]*Am[0]
+         ccopy_(&n2, Am, &int1, &Am[3*n2], &int1);
+-        cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[n2], &n, Am, &n, &cb1, &Am[3*n2], &n);
++        cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[n2], &n, Am, &n, &cb1, &Am[3*n2], &n, 1, 1);
+ 
+         // V = b[2]*Am[1] + b[0]*I_n
+         csscal_(&n2, &b[2], &Am[n2], &int1);
+@@ -1779,7 +1780,7 @@ pade_UV_calc_c(EXPM_C* Am, const Py_ssize_t size_n, const int m, int* info)
+         }
+ 
+         // Am[0] @ (1.0*Am[2] + 420*Am[1] + 15120*I)
+-        cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[4*n2], &n, Am, &n, &cdbl0, &Am[3*n2], &n);
++        cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[4*n2], &n, Am, &n, &cdbl0, &Am[3*n2], &n, 1, 1);
+ 
+         // V
+         for (i = 0; i < n; i++)
+@@ -1854,7 +1855,7 @@ pade_UV_calc_c(EXPM_C* Am, const Py_ssize_t size_n, const int m, int* info)
+         }
+ 
+         // Now overwrite Am[3] with U
+-        cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[4*n2], &n, Am, &n, &cdbl0, &Am[3*n2], &n);
++        cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[4*n2], &n, Am, &n, &cdbl0, &Am[3*n2], &n, 1, 1);
+ 
+     } else if (m == 9) {
+ 
+@@ -1916,7 +1917,7 @@ pade_UV_calc_c(EXPM_C* Am, const Py_ssize_t size_n, const int m, int* info)
+         }
+ 
+         // Now overwrite Am[3] with U
+-        cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[4*n2], &n, Am, &n, &cdbl0, &Am[3*n2], &n);
++        cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[4*n2], &n, Am, &n, &cdbl0, &Am[3*n2], &n, 1, 1);
+ 
+     } else if (m == 13) {
+         b[0]  = 64764752532480000.0;
+@@ -2010,11 +2011,11 @@ pade_UV_calc_c(EXPM_C* Am, const Py_ssize_t size_n, const int m, int* info)
+         }
+ 
+         // V = P @ Q + R
+-        cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[4*n2], &n, &Am[3*n2], &n, &cdbl1, &Am[1*n2], &n);
++        cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[4*n2], &n, &Am[3*n2], &n, &cdbl1, &Am[1*n2], &n, 1, 1);
+ 
+         // U = K @ (L @ M + N)
+-        cgemm_("N", "N", &n, &n, &n, &cdbl1, work, &n, &Am[3*n2], &n, &cdbl1, &Am[2*n2], &n);
+-        cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[2*n2], &n, Am, &n, &cdbl0, &Am[3*n2], &n);
++        cgemm_("N", "N", &n, &n, &n, &cdbl1, work, &n, &Am[3*n2], &n, &cdbl1, &Am[2*n2], &n, 1, 1);
++        cgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[2*n2], &n, Am, &n, &cdbl0, &Am[3*n2], &n, 1, 1);
+ 
+         PyMem_RawFree(work);
+     }
+@@ -2027,7 +2028,7 @@ pade_UV_calc_c(EXPM_C* Am, const Py_ssize_t size_n, const int m, int* info)
+     swap_cf_c(&Am[3*n2], &Am[2*n2], n, n, n);
+ 
+     cgetrf_(&n, &n, &Am[n2], &n, ipiv, info);
+-    cgetrs_("T", &n, &n, &Am[n2], &n, ipiv, &Am[2*n2], &n, info);
++    cgetrs_("T", &n, &n, &Am[n2], &n, ipiv, &Am[2*n2], &n, info, 1);
+     PyMem_RawFree(ipiv);
+     csscal_(&n2, &two, &Am[2*n2], &int1);
+ 
+@@ -2075,7 +2076,7 @@ pade_UV_calc_z(EXPM_Z* Am, const Py_ssize_t size_n, const int m, int* info)
+ 
+         // U = Am[0] @ Am[1] + b[1]*Am[0]
+         zcopy_(&n2, Am, &int1, &Am[3*n2], &int1);
+-        zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[n2], &n, Am, &n, &cb1, &Am[3*n2], &n);
++        zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[n2], &n, Am, &n, &cb1, &Am[3*n2], &n, 1, 1);
+ 
+         // V = b[2]*Am[1] + b[0]*I_n
+         zdscal_(&n2, &b[2], &Am[n2], &int1);
+@@ -2115,7 +2116,7 @@ pade_UV_calc_z(EXPM_Z* Am, const Py_ssize_t size_n, const int m, int* info)
+             }
+         }
+         // Am[0] @ (1.0*Am[2] + 420*Am[1] + 15120*I)
+-        zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[4*n2], &n, Am, &n, &cdbl0, &Am[3*n2], &n);
++        zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[4*n2], &n, Am, &n, &cdbl0, &Am[3*n2], &n, 1, 1);
+ 
+         // V
+         for (i = 0; i < n; i++)
+@@ -2190,7 +2191,7 @@ pade_UV_calc_z(EXPM_Z* Am, const Py_ssize_t size_n, const int m, int* info)
+         }
+ 
+         // Now overwrite Am[3] with U
+-        zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[4*n2], &n, Am, &n, &cdbl0, &Am[3*n2], &n);
++        zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[4*n2], &n, Am, &n, &cdbl0, &Am[3*n2], &n, 1, 1);
+ 
+     } else if (m == 9) {
+ 
+@@ -2252,7 +2253,7 @@ pade_UV_calc_z(EXPM_Z* Am, const Py_ssize_t size_n, const int m, int* info)
+         }
+ 
+         // Now overwrite Am[3] with U
+-        zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[4*n2], &n, Am, &n, &cdbl0, &Am[3*n2], &n);
++        zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[4*n2], &n, Am, &n, &cdbl0, &Am[3*n2], &n, 1, 1);
+ 
+     } else if (m == 13) {
+         b[0]  = 64764752532480000.0;
+@@ -2346,11 +2347,11 @@ pade_UV_calc_z(EXPM_Z* Am, const Py_ssize_t size_n, const int m, int* info)
+         }
+ 
+         // V = P @ Q + R
+-        zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[4*n2], &n, &Am[3*n2], &n, &cdbl1, &Am[1*n2], &n);
++        zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[4*n2], &n, &Am[3*n2], &n, &cdbl1, &Am[1*n2], &n, 1, 1);
+ 
+         // U = K @ (L @ M + N)
+-        zgemm_("N", "N", &n, &n, &n, &cdbl1, work, &n, &Am[3*n2], &n, &cdbl1, &Am[2*n2], &n);
+-        zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[2*n2], &n, Am, &n, &cdbl0, &Am[3*n2], &n);
++        zgemm_("N", "N", &n, &n, &n, &cdbl1, work, &n, &Am[3*n2], &n, &cdbl1, &Am[2*n2], &n, 1, 1);
++        zgemm_("N", "N", &n, &n, &n, &cdbl1, &Am[2*n2], &n, Am, &n, &cdbl0, &Am[3*n2], &n, 1, 1);
+ 
+         PyMem_RawFree(work);
+     }
+@@ -2362,7 +2363,7 @@ pade_UV_calc_z(EXPM_Z* Am, const Py_ssize_t size_n, const int m, int* info)
+     swap_cf_z(&Am[3*n2], &Am[2*n2], n, n, n);
+ 
+     zgetrf_(&n, &n, &Am[n2], &n, ipiv, info);
+-    zgetrs_("T", &n, &n, &Am[n2], &n, ipiv, &Am[2*n2], &n, info);
++    zgetrs_("T", &n, &n, &Am[n2], &n, ipiv, &Am[2*n2], &n, info, 1);
+     PyMem_RawFree(ipiv);
+     zdscal_(&n2, &two, &Am[2*n2], &int1);
+ 
+diff --git a/scipy/linalg/_matfuncs_expm.h b/scipy/linalg/_matfuncs_expm.h
+index 134c295..30726ed 100644
+--- a/scipy/linalg/_matfuncs_expm.h
++++ b/scipy/linalg/_matfuncs_expm.h
+@@ -22,37 +22,37 @@
+ // BLAS and LAPACK functions used
+ void saxpy_(int* n, float* sa, float* sx, int* incx, float* sy, int* incy);
+ void scopy_(int* n, float* dx, int* incx, float* dy, int* incy);
+-void sgemm_(char* transa, char* transb, int* m, int* n, int* k, float* alpha, float* a, int* lda, float* b, int* ldb, float* beta, float* c, int* ldc);
+-void sgemv_(char* trans, int* m, int* n, float* alpha, float* a, int* lda, float* x, int* incx, float* beta, float* y, int* incy);
++void sgemm_(char* transa, char* transb, int* m, int* n, int* k, float* alpha, float* a, int* lda, float* b, int* ldb, float* beta, float* c, int* ldc, int char_len0, int char_len1);
++void sgemv_(char* trans, int* m, int* n, float* alpha, float* a, int* lda, float* x, int* incx, float* beta, float* y, int* incy, int char_len0);
+ void sgetrf_(int* m, int* n, float* a, int* lda, int* ipiv, int* info);
+-void sgetrs_(char* trans, int* n, int* nrhs, float* a, int* lda, int* ipiv, float* b, int* ldb, int* info);
++void sgetrs_(char* trans, int* n, int* nrhs, float* a, int* lda, int* ipiv, float* b, int* ldb, int* info, int char_len0);
+ void slacn2_(int* n, float* v, float* x, int* isgn, float* est, int* kase, int* isave);
+ void sscal_(int* n, float* sa, float* sx, int* incx);
+ 
+ void daxpy_(int* n, double* sa, double* sx, int* incx, double* sy, int* incy);
+ void dcopy_(int* n, double* dx, int* incx, double* dy, int* incy);
+-void dgemm_(char* transa, char* transb, int* m, int* n, int* k, double* alpha, double* a, int* lda, double* b, int* ldb, double* beta, double* c, int* ldc);
+-void dgemv_(char* trans, int* m, int* n, double* alpha, double* a, int* lda, double* x, int* incx, double* beta, double* y, int* incy);
++void dgemm_(char* transa, char* transb, int* m, int* n, int* k, double* alpha, double* a, int* lda, double* b, int* ldb, double* beta, double* c, int* ldc, int* char_len0, int* char_len1);
++void dgemv_(char* trans, int* m, int* n, double* alpha, double* a, int* lda, double* x, int* incx, double* beta, double* y, int* incy, int char_len0);
+ void dgetrf_(int* m, int* n, double* a, int* lda, int* ipiv, int* info);
+-void dgetrs_(char* trans, int* n, int* nrhs, double* a, int* lda, int* ipiv, double* b, int* ldb, int* info);
++void dgetrs_(char* trans, int* n, int* nrhs, double* a, int* lda, int* ipiv, double* b, int* ldb, int* info, int char_len0);
+ void dlacn2_(int* n, double* v, double* x, int* isgn, double* est, int* kase, int* isave);
+ void dscal_(int* n, double* sa, double* sx, int* incx);
+ 
+ void caxpy_(int* n, EXPM_C* sa, EXPM_C* sx, int* incx, EXPM_C* sy, int* incy);
+ void ccopy_(int* n, EXPM_C* dx, int* incx, EXPM_C* dy, int* incy);
+-void cgemm_(char* transa, char* transb, int* m, int* n, int* k, EXPM_C* alpha, EXPM_C* a, int* lda, EXPM_C* b, int* ldb, EXPM_C* beta, EXPM_C* c, int* ldc);
+-void cgemv_(char* trans, int* m, int* n, EXPM_C* alpha, EXPM_C* a, int* lda, EXPM_C* x, int* incx, EXPM_C* beta, EXPM_C* y, int* incy);
++void cgemm_(char* transa, char* transb, int* m, int* n, int* k, EXPM_C* alpha, EXPM_C* a, int* lda, EXPM_C* b, int* ldb, EXPM_C* beta, EXPM_C* c, int* ldc, int char_len0, int char_len1);
++void cgemv_(char* trans, int* m, int* n, EXPM_C* alpha, EXPM_C* a, int* lda, EXPM_C* x, int* incx, EXPM_C* beta, EXPM_C* y, int* incy, int char_len0);
+ void cgetrf_(int* m, int* n, EXPM_C* a, int* lda, int* ipiv, int* info);
+-void cgetrs_(char* trans, int* n, int* nrhs, EXPM_C* a, int* lda, int* ipiv, EXPM_C* b, int* ldb, int* info);
++void cgetrs_(char* trans, int* n, int* nrhs, EXPM_C* a, int* lda, int* ipiv, EXPM_C* b, int* ldb, int* info, int char_len0);
+ void clacn2_(int* n, EXPM_C* v, EXPM_C* x, float* est, int* kase, int* isave);
+ void csscal_(int* n, float* sa, EXPM_C* sx, int* incx);
+ 
+ void zaxpy_(int* n, EXPM_Z* sa, EXPM_Z* sx, int* incx, EXPM_Z* sy, int* incy);
+ void zcopy_(int* n, EXPM_Z* dx, int* incx, EXPM_Z* dy, int* incy);
+-void zgemm_(char* transa, char* transb, int* m, int* n, int* k, EXPM_Z* alpha, EXPM_Z* a, int* lda, EXPM_Z* b, int* ldb, EXPM_Z* beta, EXPM_Z* c, int* ldc);
+-void zgemv_(char* trans, int* m, int* n, EXPM_Z* alpha, EXPM_Z* a, int* lda, EXPM_Z* x, int* incx, EXPM_Z* beta, EXPM_Z* y, int* incy);
++void zgemm_(char* transa, char* transb, int* m, int* n, int* k, EXPM_Z* alpha, EXPM_Z* a, int* lda, EXPM_Z* b, int* ldb, EXPM_Z* beta, EXPM_Z* c, int* ldc, int char_len0, int char_len1);
++void zgemv_(char* trans, int* m, int* n, EXPM_Z* alpha, EXPM_Z* a, int* lda, EXPM_Z* x, int* incx, EXPM_Z* beta, EXPM_Z* y, int* incy, int char_len0);
+ void zgetrf_(int* m, int* n, EXPM_Z* a, int* lda, int* ipiv, int* info);
+-void zgetrs_(char* trans, int* n, int* nrhs, EXPM_Z* a, int* lda, int* ipiv, EXPM_Z* b, int* ldb, int* info);
++void zgetrs_(char* trans, int* n, int* nrhs, EXPM_Z* a, int* lda, int* ipiv, EXPM_Z* b, int* ldb, int* info, int char_len0);
+ void zlacn2_(int* n, EXPM_Z* v, EXPM_Z* x, double* est, int* kase, int* isave);
+ void zdscal_(int* n, double* sa, EXPM_Z* sx, int* incx);
+ 
+diff --git a/scipy/linalg/cython_blas_signatures.txt b/scipy/linalg/cython_blas_signatures.txt
+index 70bdc0f..fbe7559 100644
+--- a/scipy/linalg/cython_blas_signatures.txt
++++ b/scipy/linalg/cython_blas_signatures.txt
+@@ -5,79 +5,79 @@ void caxpy(int *n, c *ca, c *cx, int *incx, c *cy, int *incy)
+ void ccopy(int *n, c *cx, int *incx, c *cy, int *incy)
+ c cdotc(int *n, c *cx, int *incx, c *cy, int *incy)
+ c cdotu(int *n, c *cx, int *incx, c *cy, int *incy)
+-void cgbmv(char *trans, int *m, int *n, int *kl, int *ku, c *alpha, c *a, int *lda, c *x, int *incx, c *beta, c *y, int *incy)
+-void cgemm(char *transa, char *transb, int *m, int *n, int *k, c *alpha, c *a, int *lda, c *b, int *ldb, c *beta, c *c, int *ldc)
+-void cgemv(char *trans, int *m, int *n, c *alpha, c *a, int *lda, c *x, int *incx, c *beta, c *y, int *incy)
++void cgbmv(char *trans, int *m, int *n, int *kl, int *ku, c *alpha, c *a, int *lda, c *x, int *incx, c *beta, c *y, int *incy, int *char_len_trans)
++void cgemm(char *transa, char *transb, int *m, int *n, int *k, c *alpha, c *a, int *lda, c *b, int *ldb, c *beta, c *c, int *ldc, int *char_len_transa, int *char_len_transb)
++void cgemv(char *trans, int *m, int *n, c *alpha, c *a, int *lda, c *x, int *incx, c *beta, c *y, int *incy, int *char_len_trans)
+ void cgerc(int *m, int *n, c *alpha, c *x, int *incx, c *y, int *incy, c *a, int *lda)
+ void cgeru(int *m, int *n, c *alpha, c *x, int *incx, c *y, int *incy, c *a, int *lda)
+-void chbmv(char *uplo, int *n, int *k, c *alpha, c *a, int *lda, c *x, int *incx, c *beta, c *y, int *incy)
+-void chemm(char *side, char *uplo, int *m, int *n, c *alpha, c *a, int *lda, c *b, int *ldb, c *beta, c *c, int *ldc)
+-void chemv(char *uplo, int *n, c *alpha, c *a, int *lda, c *x, int *incx, c *beta, c *y, int *incy)
+-void cher(char *uplo, int *n, s *alpha, c *x, int *incx, c *a, int *lda)
+-void cher2(char *uplo, int *n, c *alpha, c *x, int *incx, c *y, int *incy, c *a, int *lda)
+-void cher2k(char *uplo, char *trans, int *n, int *k, c *alpha, c *a, int *lda, c *b, int *ldb, s *beta, c *c, int *ldc)
+-void cherk(char *uplo, char *trans, int *n, int *k, s *alpha, c *a, int *lda, s *beta, c *c, int *ldc)
+-void chpmv(char *uplo, int *n, c *alpha, c *ap, c *x, int *incx, c *beta, c *y, int *incy)
+-void chpr(char *uplo, int *n, s *alpha, c *x, int *incx, c *ap)
+-void chpr2(char *uplo, int *n, c *alpha, c *x, int *incx, c *y, int *incy, c *ap)
++void chbmv(char *uplo, int *n, int *k, c *alpha, c *a, int *lda, c *x, int *incx, c *beta, c *y, int *incy, int *char_len_uplo)
++void chemm(char *side, char *uplo, int *m, int *n, c *alpha, c *a, int *lda, c *b, int *ldb, c *beta, c *c, int *ldc, int *char_len_side, int *char_len_uplo)
++void chemv(char *uplo, int *n, c *alpha, c *a, int *lda, c *x, int *incx, c *beta, c *y, int *incy, int *char_len_uplo)
++void cher(char *uplo, int *n, s *alpha, c *x, int *incx, c *a, int *lda, int *char_len_uplo)
++void cher2(char *uplo, int *n, c *alpha, c *x, int *incx, c *y, int *incy, c *a, int *lda, int *char_len_uplo)
++void cher2k(char *uplo, char *trans, int *n, int *k, c *alpha, c *a, int *lda, c *b, int *ldb, s *beta, c *c, int *ldc, int *char_len_uplo, int *char_len_trans)
++void cherk(char *uplo, char *trans, int *n, int *k, s *alpha, c *a, int *lda, s *beta, c *c, int *ldc, int *char_len_uplo, int *char_len_trans)
++void chpmv(char *uplo, int *n, c *alpha, c *ap, c *x, int *incx, c *beta, c *y, int *incy, int *char_len_uplo)
++void chpr(char *uplo, int *n, s *alpha, c *x, int *incx, c *ap, int *char_len_uplo)
++void chpr2(char *uplo, int *n, c *alpha, c *x, int *incx, c *y, int *incy, c *ap, int *char_len_uplo)
+ void crotg(c *ca, c *cb, s *c, c *s)
+ void cscal(int *n, c *ca, c *cx, int *incx)
+ void csrot(int *n, c *cx, int *incx, c *cy, int *incy, s *c, s *s)
+ void csscal(int *n, s *sa, c *cx, int *incx)
+ void cswap(int *n, c *cx, int *incx, c *cy, int *incy)
+-void csymm(char *side, char *uplo, int *m, int *n, c *alpha, c *a, int *lda, c *b, int *ldb, c *beta, c *c, int *ldc)
+-void csyr2k(char *uplo, char *trans, int *n, int *k, c *alpha, c *a, int *lda, c *b, int *ldb, c *beta, c *c, int *ldc)
+-void csyrk(char *uplo, char *trans, int *n, int *k, c *alpha, c *a, int *lda, c *beta, c *c, int *ldc)
+-void ctbmv(char *uplo, char *trans, char *diag, int *n, int *k, c *a, int *lda, c *x, int *incx)
+-void ctbsv(char *uplo, char *trans, char *diag, int *n, int *k, c *a, int *lda, c *x, int *incx)
+-void ctpmv(char *uplo, char *trans, char *diag, int *n, c *ap, c *x, int *incx)
+-void ctpsv(char *uplo, char *trans, char *diag, int *n, c *ap, c *x, int *incx)
+-void ctrmm(char *side, char *uplo, char *transa, char *diag, int *m, int *n, c *alpha, c *a, int *lda, c *b, int *ldb)
+-void ctrmv(char *uplo, char *trans, char *diag, int *n, c *a, int *lda, c *x, int *incx)
+-void ctrsm(char *side, char *uplo, char *transa, char *diag, int *m, int *n, c *alpha, c *a, int *lda, c *b, int *ldb)
+-void ctrsv(char *uplo, char *trans, char *diag, int *n, c *a, int *lda, c *x, int *incx)
++void csymm(char *side, char *uplo, int *m, int *n, c *alpha, c *a, int *lda, c *b, int *ldb, c *beta, c *c, int *ldc, int *char_len_side, int *char_len_uplo)
++void csyr2k(char *uplo, char *trans, int *n, int *k, c *alpha, c *a, int *lda, c *b, int *ldb, c *beta, c *c, int *ldc, int *char_len_uplo, int *char_len_trans)
++void csyrk(char *uplo, char *trans, int *n, int *k, c *alpha, c *a, int *lda, c *beta, c *c, int *ldc, int *char_len_uplo, int *char_len_trans)
++void ctbmv(char *uplo, char *trans, char *diag, int *n, int *k, c *a, int *lda, c *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
++void ctbsv(char *uplo, char *trans, char *diag, int *n, int *k, c *a, int *lda, c *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
++void ctpmv(char *uplo, char *trans, char *diag, int *n, c *ap, c *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
++void ctpsv(char *uplo, char *trans, char *diag, int *n, c *ap, c *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
++void ctrmm(char *side, char *uplo, char *transa, char *diag, int *m, int *n, c *alpha, c *a, int *lda, c *b, int *ldb, int *char_len_side, int *char_len_uplo, int *char_len_transa, int *char_len_diag)
++void ctrmv(char *uplo, char *trans, char *diag, int *n, c *a, int *lda, c *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
++void ctrsm(char *side, char *uplo, char *transa, char *diag, int *m, int *n, c *alpha, c *a, int *lda, c *b, int *ldb, int *char_len_side, int *char_len_uplo, int *char_len_transa, int *char_len_diag)
++void ctrsv(char *uplo, char *trans, char *diag, int *n, c *a, int *lda, c *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
+ d dasum(int *n, d *dx, int *incx)
+ void daxpy(int *n, d *da, d *dx, int *incx, d *dy, int *incy)
+ d dcabs1(z *z)
+ void dcopy(int *n, d *dx, int *incx, d *dy, int *incy)
+ d ddot(int *n, d *dx, int *incx, d *dy, int *incy)
+-void dgbmv(char *trans, int *m, int *n, int *kl, int *ku, d *alpha, d *a, int *lda, d *x, int *incx, d *beta, d *y, int *incy)
+-void dgemm(char *transa, char *transb, int *m, int *n, int *k, d *alpha, d *a, int *lda, d *b, int *ldb, d *beta, d *c, int *ldc)
+-void dgemv(char *trans, int *m, int *n, d *alpha, d *a, int *lda, d *x, int *incx, d *beta, d *y, int *incy)
++void dgbmv(char *trans, int *m, int *n, int *kl, int *ku, d *alpha, d *a, int *lda, d *x, int *incx, d *beta, d *y, int *incy, int *char_len_trans)
++void dgemm(char *transa, char *transb, int *m, int *n, int *k, d *alpha, d *a, int *lda, d *b, int *ldb, d *beta, d *c, int *ldc, int *char_len_transa, int *char_len_transb)
++void dgemv(char *trans, int *m, int *n, d *alpha, d *a, int *lda, d *x, int *incx, d *beta, d *y, int *incy, int *char_len_trans)
+ void dger(int *m, int *n, d *alpha, d *x, int *incx, d *y, int *incy, d *a, int *lda)
+ d dnrm2(int *n, d *x, int *incx)
+ void drot(int *n, d *dx, int *incx, d *dy, int *incy, d *c, d *s)
+ void drotg(d *da, d *db, d *c, d *s)
+ void drotm(int *n, d *dx, int *incx, d *dy, int *incy, d *dparam)
+ void drotmg(d *dd1, d *dd2, d *dx1, d *dy1, d *dparam)
+-void dsbmv(char *uplo, int *n, int *k, d *alpha, d *a, int *lda, d *x, int *incx, d *beta, d *y, int *incy)
++void dsbmv(char *uplo, int *n, int *k, d *alpha, d *a, int *lda, d *x, int *incx, d *beta, d *y, int *incy, int *char_len_uplo)
+ void dscal(int *n, d *da, d *dx, int *incx)
+ d dsdot(int *n, s *sx, int *incx, s *sy, int *incy)
+-void dspmv(char *uplo, int *n, d *alpha, d *ap, d *x, int *incx, d *beta, d *y, int *incy)
+-void dspr(char *uplo, int *n, d *alpha, d *x, int *incx, d *ap)
+-void dspr2(char *uplo, int *n, d *alpha, d *x, int *incx, d *y, int *incy, d *ap)
++void dspmv(char *uplo, int *n, d *alpha, d *ap, d *x, int *incx, d *beta, d *y, int *incy, int *char_len_uplo)
++void dspr(char *uplo, int *n, d *alpha, d *x, int *incx, d *ap, int *char_len_uplo)
++void dspr2(char *uplo, int *n, d *alpha, d *x, int *incx, d *y, int *incy, d *ap, int *char_len_uplo)
+ void dswap(int *n, d *dx, int *incx, d *dy, int *incy)
+-void dsymm(char *side, char *uplo, int *m, int *n, d *alpha, d *a, int *lda, d *b, int *ldb, d *beta, d *c, int *ldc)
+-void dsymv(char *uplo, int *n, d *alpha, d *a, int *lda, d *x, int *incx, d *beta, d *y, int *incy)
+-void dsyr(char *uplo, int *n, d *alpha, d *x, int *incx, d *a, int *lda)
+-void dsyr2(char *uplo, int *n, d *alpha, d *x, int *incx, d *y, int *incy, d *a, int *lda)
+-void dsyr2k(char *uplo, char *trans, int *n, int *k, d *alpha, d *a, int *lda, d *b, int *ldb, d *beta, d *c, int *ldc)
+-void dsyrk(char *uplo, char *trans, int *n, int *k, d *alpha, d *a, int *lda, d *beta, d *c, int *ldc)
+-void dtbmv(char *uplo, char *trans, char *diag, int *n, int *k, d *a, int *lda, d *x, int *incx)
+-void dtbsv(char *uplo, char *trans, char *diag, int *n, int *k, d *a, int *lda, d *x, int *incx)
+-void dtpmv(char *uplo, char *trans, char *diag, int *n, d *ap, d *x, int *incx)
+-void dtpsv(char *uplo, char *trans, char *diag, int *n, d *ap, d *x, int *incx)
+-void dtrmm(char *side, char *uplo, char *transa, char *diag, int *m, int *n, d *alpha, d *a, int *lda, d *b, int *ldb)
+-void dtrmv(char *uplo, char *trans, char *diag, int *n, d *a, int *lda, d *x, int *incx)
+-void dtrsm(char *side, char *uplo, char *transa, char *diag, int *m, int *n, d *alpha, d *a, int *lda, d *b, int *ldb)
+-void dtrsv(char *uplo, char *trans, char *diag, int *n, d *a, int *lda, d *x, int *incx)
++void dsymm(char *side, char *uplo, int *m, int *n, d *alpha, d *a, int *lda, d *b, int *ldb, d *beta, d *c, int *ldc, int *char_len_side, int *char_len_uplo)
++void dsymv(char *uplo, int *n, d *alpha, d *a, int *lda, d *x, int *incx, d *beta, d *y, int *incy, int *char_len_uplo)
++void dsyr(char *uplo, int *n, d *alpha, d *x, int *incx, d *a, int *lda, int *char_len_uplo)
++void dsyr2(char *uplo, int *n, d *alpha, d *x, int *incx, d *y, int *incy, d *a, int *lda, int *char_len_uplo)
++void dsyr2k(char *uplo, char *trans, int *n, int *k, d *alpha, d *a, int *lda, d *b, int *ldb, d *beta, d *c, int *ldc, int *char_len_uplo, int *char_len_trans)
++void dsyrk(char *uplo, char *trans, int *n, int *k, d *alpha, d *a, int *lda, d *beta, d *c, int *ldc, int *char_len_uplo, int *char_len_trans)
++void dtbmv(char *uplo, char *trans, char *diag, int *n, int *k, d *a, int *lda, d *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
++void dtbsv(char *uplo, char *trans, char *diag, int *n, int *k, d *a, int *lda, d *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
++void dtpmv(char *uplo, char *trans, char *diag, int *n, d *ap, d *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
++void dtpsv(char *uplo, char *trans, char *diag, int *n, d *ap, d *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
++void dtrmm(char *side, char *uplo, char *transa, char *diag, int *m, int *n, d *alpha, d *a, int *lda, d *b, int *ldb, int *char_len_side, int *char_len_uplo, int *char_len_transa, int *char_len_diag)
++void dtrmv(char *uplo, char *trans, char *diag, int *n, d *a, int *lda, d *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
++void dtrsm(char *side, char *uplo, char *transa, char *diag, int *m, int *n, d *alpha, d *a, int *lda, d *b, int *ldb, int *char_len_side, int *char_len_uplo, int *char_len_transa, int *char_len_diag)
++void dtrsv(char *uplo, char *trans, char *diag, int *n, d *a, int *lda, d *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
+ d dzasum(int *n, z *zx, int *incx)
+ d dznrm2(int *n, z *x, int *incx)
+ int icamax(int *n, c *cx, int *incx)
+ int idamax(int *n, d *dx, int *incx)
+ int isamax(int *n, s *sx, int *incx)
+ int izamax(int *n, z *zx, int *incx)
+-bint lsame(char *ca, char *cb)
++bint lsame(char *ca, char *cb, int *char_len_ca, int *char_len_cb)
+ s sasum(int *n, s *sx, int *incx)
+ void saxpy(int *n, s *sa, s *sx, int *incx, s *sy, int *incy)
+ s scasum(int *n, c *cx, int *incx)
+@@ -85,67 +85,67 @@ s scnrm2(int *n, c *x, int *incx)
+ void scopy(int *n, s *sx, int *incx, s *sy, int *incy)
+ s sdot(int *n, s *sx, int *incx, s *sy, int *incy)
+ s sdsdot(int *n, s *sb, s *sx, int *incx, s *sy, int *incy)
+-void sgbmv(char *trans, int *m, int *n, int *kl, int *ku, s *alpha, s *a, int *lda, s *x, int *incx, s *beta, s *y, int *incy)
+-void sgemm(char *transa, char *transb, int *m, int *n, int *k, s *alpha, s *a, int *lda, s *b, int *ldb, s *beta, s *c, int *ldc)
+-void sgemv(char *trans, int *m, int *n, s *alpha, s *a, int *lda, s *x, int *incx, s *beta, s *y, int *incy)
++void sgbmv(char *trans, int *m, int *n, int *kl, int *ku, s *alpha, s *a, int *lda, s *x, int *incx, s *beta, s *y, int *incy, int *char_len_trans)
++void sgemm(char *transa, char *transb, int *m, int *n, int *k, s *alpha, s *a, int *lda, s *b, int *ldb, s *beta, s *c, int *ldc, int *char_len_transa, int *char_len_transb)
++void sgemv(char *trans, int *m, int *n, s *alpha, s *a, int *lda, s *x, int *incx, s *beta, s *y, int *incy, int *char_len_trans)
+ void sger(int *m, int *n, s *alpha, s *x, int *incx, s *y, int *incy, s *a, int *lda)
+ s snrm2(int *n, s *x, int *incx)
+ void srot(int *n, s *sx, int *incx, s *sy, int *incy, s *c, s *s)
+ void srotg(s *sa, s *sb, s *c, s *s)
+ void srotm(int *n, s *sx, int *incx, s *sy, int *incy, s *sparam)
+ void srotmg(s *sd1, s *sd2, s *sx1, s *sy1, s *sparam)
+-void ssbmv(char *uplo, int *n, int *k, s *alpha, s *a, int *lda, s *x, int *incx, s *beta, s *y, int *incy)
++void ssbmv(char *uplo, int *n, int *k, s *alpha, s *a, int *lda, s *x, int *incx, s *beta, s *y, int *incy, int *char_len_uplo)
+ void sscal(int *n, s *sa, s *sx, int *incx)
+-void sspmv(char *uplo, int *n, s *alpha, s *ap, s *x, int *incx, s *beta, s *y, int *incy)
+-void sspr(char *uplo, int *n, s *alpha, s *x, int *incx, s *ap)
+-void sspr2(char *uplo, int *n, s *alpha, s *x, int *incx, s *y, int *incy, s *ap)
++void sspmv(char *uplo, int *n, s *alpha, s *ap, s *x, int *incx, s *beta, s *y, int *incy, int *char_len_uplo)
++void sspr(char *uplo, int *n, s *alpha, s *x, int *incx, s *ap, int *char_len_uplo)
++void sspr2(char *uplo, int *n, s *alpha, s *x, int *incx, s *y, int *incy, s *ap, int *char_len_uplo)
+ void sswap(int *n, s *sx, int *incx, s *sy, int *incy)
+-void ssymm(char *side, char *uplo, int *m, int *n, s *alpha, s *a, int *lda, s *b, int *ldb, s *beta, s *c, int *ldc)
+-void ssymv(char *uplo, int *n, s *alpha, s *a, int *lda, s *x, int *incx, s *beta, s *y, int *incy)
+-void ssyr(char *uplo, int *n, s *alpha, s *x, int *incx, s *a, int *lda)
+-void ssyr2(char *uplo, int *n, s *alpha, s *x, int *incx, s *y, int *incy, s *a, int *lda)
+-void ssyr2k(char *uplo, char *trans, int *n, int *k, s *alpha, s *a, int *lda, s *b, int *ldb, s *beta, s *c, int *ldc)
+-void ssyrk(char *uplo, char *trans, int *n, int *k, s *alpha, s *a, int *lda, s *beta, s *c, int *ldc)
+-void stbmv(char *uplo, char *trans, char *diag, int *n, int *k, s *a, int *lda, s *x, int *incx)
+-void stbsv(char *uplo, char *trans, char *diag, int *n, int *k, s *a, int *lda, s *x, int *incx)
+-void stpmv(char *uplo, char *trans, char *diag, int *n, s *ap, s *x, int *incx)
+-void stpsv(char *uplo, char *trans, char *diag, int *n, s *ap, s *x, int *incx)
+-void strmm(char *side, char *uplo, char *transa, char *diag, int *m, int *n, s *alpha, s *a, int *lda, s *b, int *ldb)
+-void strmv(char *uplo, char *trans, char *diag, int *n, s *a, int *lda, s *x, int *incx)
+-void strsm(char *side, char *uplo, char *transa, char *diag, int *m, int *n, s *alpha, s *a, int *lda, s *b, int *ldb)
+-void strsv(char *uplo, char *trans, char *diag, int *n, s *a, int *lda, s *x, int *incx)
++void ssymm(char *side, char *uplo, int *m, int *n, s *alpha, s *a, int *lda, s *b, int *ldb, s *beta, s *c, int *ldc, int *char_len_side, int *char_len_uplo)
++void ssymv(char *uplo, int *n, s *alpha, s *a, int *lda, s *x, int *incx, s *beta, s *y, int *incy, int *char_len_uplo)
++void ssyr(char *uplo, int *n, s *alpha, s *x, int *incx, s *a, int *lda, int *char_len_uplo)
++void ssyr2(char *uplo, int *n, s *alpha, s *x, int *incx, s *y, int *incy, s *a, int *lda, int *char_len_uplo)
++void ssyr2k(char *uplo, char *trans, int *n, int *k, s *alpha, s *a, int *lda, s *b, int *ldb, s *beta, s *c, int *ldc, int *char_len_uplo, int *char_len_trans)
++void ssyrk(char *uplo, char *trans, int *n, int *k, s *alpha, s *a, int *lda, s *beta, s *c, int *ldc, int *char_len_uplo, int *char_len_trans)
++void stbmv(char *uplo, char *trans, char *diag, int *n, int *k, s *a, int *lda, s *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
++void stbsv(char *uplo, char *trans, char *diag, int *n, int *k, s *a, int *lda, s *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
++void stpmv(char *uplo, char *trans, char *diag, int *n, s *ap, s *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
++void stpsv(char *uplo, char *trans, char *diag, int *n, s *ap, s *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
++void strmm(char *side, char *uplo, char *transa, char *diag, int *m, int *n, s *alpha, s *a, int *lda, s *b, int *ldb, int *char_len_side, int *char_len_uplo, int *char_len_transa, int *char_len_diag)
++void strmv(char *uplo, char *trans, char *diag, int *n, s *a, int *lda, s *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
++void strsm(char *side, char *uplo, char *transa, char *diag, int *m, int *n, s *alpha, s *a, int *lda, s *b, int *ldb, int *char_len_side, int *char_len_uplo, int *char_len_transa, int *char_len_diag)
++void strsv(char *uplo, char *trans, char *diag, int *n, s *a, int *lda, s *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
+ void zaxpy(int *n, z *za, z *zx, int *incx, z *zy, int *incy)
+ void zcopy(int *n, z *zx, int *incx, z *zy, int *incy)
+ z zdotc(int *n, z *zx, int *incx, z *zy, int *incy)
+ z zdotu(int *n, z *zx, int *incx, z *zy, int *incy)
+ void zdrot(int *n, z *cx, int *incx, z *cy, int *incy, d *c, d *s)
+ void zdscal(int *n, d *da, z *zx, int *incx)
+-void zgbmv(char *trans, int *m, int *n, int *kl, int *ku, z *alpha, z *a, int *lda, z *x, int *incx, z *beta, z *y, int *incy)
+-void zgemm(char *transa, char *transb, int *m, int *n, int *k, z *alpha, z *a, int *lda, z *b, int *ldb, z *beta, z *c, int *ldc)
+-void zgemv(char *trans, int *m, int *n, z *alpha, z *a, int *lda, z *x, int *incx, z *beta, z *y, int *incy)
++void zgbmv(char *trans, int *m, int *n, int *kl, int *ku, z *alpha, z *a, int *lda, z *x, int *incx, z *beta, z *y, int *incy, int *char_len_trans)
++void zgemm(char *transa, char *transb, int *m, int *n, int *k, z *alpha, z *a, int *lda, z *b, int *ldb, z *beta, z *c, int *ldc, int *char_len_transa, int *char_len_transb)
++void zgemv(char *trans, int *m, int *n, z *alpha, z *a, int *lda, z *x, int *incx, z *beta, z *y, int *incy, int *char_len_trans)
+ void zgerc(int *m, int *n, z *alpha, z *x, int *incx, z *y, int *incy, z *a, int *lda)
+ void zgeru(int *m, int *n, z *alpha, z *x, int *incx, z *y, int *incy, z *a, int *lda)
+-void zhbmv(char *uplo, int *n, int *k, z *alpha, z *a, int *lda, z *x, int *incx, z *beta, z *y, int *incy)
+-void zhemm(char *side, char *uplo, int *m, int *n, z *alpha, z *a, int *lda, z *b, int *ldb, z *beta, z *c, int *ldc)
+-void zhemv(char *uplo, int *n, z *alpha, z *a, int *lda, z *x, int *incx, z *beta, z *y, int *incy)
+-void zher(char *uplo, int *n, d *alpha, z *x, int *incx, z *a, int *lda)
+-void zher2(char *uplo, int *n, z *alpha, z *x, int *incx, z *y, int *incy, z *a, int *lda)
+-void zher2k(char *uplo, char *trans, int *n, int *k, z *alpha, z *a, int *lda, z *b, int *ldb, d *beta, z *c, int *ldc)
+-void zherk(char *uplo, char *trans, int *n, int *k, d *alpha, z *a, int *lda, d *beta, z *c, int *ldc)
+-void zhpmv(char *uplo, int *n, z *alpha, z *ap, z *x, int *incx, z *beta, z *y, int *incy)
+-void zhpr(char *uplo, int *n, d *alpha, z *x, int *incx, z *ap)
+-void zhpr2(char *uplo, int *n, z *alpha, z *x, int *incx, z *y, int *incy, z *ap)
++void zhbmv(char *uplo, int *n, int *k, z *alpha, z *a, int *lda, z *x, int *incx, z *beta, z *y, int *incy, int *char_len_uplo)
++void zhemm(char *side, char *uplo, int *m, int *n, z *alpha, z *a, int *lda, z *b, int *ldb, z *beta, z *c, int *ldc, int *char_len_side, int *char_len_uplo)
++void zhemv(char *uplo, int *n, z *alpha, z *a, int *lda, z *x, int *incx, z *beta, z *y, int *incy, int *char_len_uplo)
++void zher(char *uplo, int *n, d *alpha, z *x, int *incx, z *a, int *lda, int *char_len_uplo)
++void zher2(char *uplo, int *n, z *alpha, z *x, int *incx, z *y, int *incy, z *a, int *lda, int *char_len_uplo)
++void zher2k(char *uplo, char *trans, int *n, int *k, z *alpha, z *a, int *lda, z *b, int *ldb, d *beta, z *c, int *ldc, int *char_len_uplo, int *char_len_trans)
++void zherk(char *uplo, char *trans, int *n, int *k, d *alpha, z *a, int *lda, d *beta, z *c, int *ldc, int *char_len_uplo, int *char_len_trans)
++void zhpmv(char *uplo, int *n, z *alpha, z *ap, z *x, int *incx, z *beta, z *y, int *incy, int *char_len_uplo)
++void zhpr(char *uplo, int *n, d *alpha, z *x, int *incx, z *ap, int *char_len_uplo)
++void zhpr2(char *uplo, int *n, z *alpha, z *x, int *incx, z *y, int *incy, z *ap, int *char_len_uplo)
+ void zrotg(z *ca, z *cb, d *c, z *s)
+ void zscal(int *n, z *za, z *zx, int *incx)
+ void zswap(int *n, z *zx, int *incx, z *zy, int *incy)
+-void zsymm(char *side, char *uplo, int *m, int *n, z *alpha, z *a, int *lda, z *b, int *ldb, z *beta, z *c, int *ldc)
+-void zsyr2k(char *uplo, char *trans, int *n, int *k, z *alpha, z *a, int *lda, z *b, int *ldb, z *beta, z *c, int *ldc)
+-void zsyrk(char *uplo, char *trans, int *n, int *k, z *alpha, z *a, int *lda, z *beta, z *c, int *ldc)
+-void ztbmv(char *uplo, char *trans, char *diag, int *n, int *k, z *a, int *lda, z *x, int *incx)
+-void ztbsv(char *uplo, char *trans, char *diag, int *n, int *k, z *a, int *lda, z *x, int *incx)
+-void ztpmv(char *uplo, char *trans, char *diag, int *n, z *ap, z *x, int *incx)
+-void ztpsv(char *uplo, char *trans, char *diag, int *n, z *ap, z *x, int *incx)
+-void ztrmm(char *side, char *uplo, char *transa, char *diag, int *m, int *n, z *alpha, z *a, int *lda, z *b, int *ldb)
+-void ztrmv(char *uplo, char *trans, char *diag, int *n, z *a, int *lda, z *x, int *incx)
+-void ztrsm(char *side, char *uplo, char *transa, char *diag, int *m, int *n, z *alpha, z *a, int *lda, z *b, int *ldb)
+-void ztrsv(char *uplo, char *trans, char *diag, int *n, z *a, int *lda, z *x, int *incx)
++void zsymm(char *side, char *uplo, int *m, int *n, z *alpha, z *a, int *lda, z *b, int *ldb, z *beta, z *c, int *ldc, int *char_len_side, int *char_len_uplo)
++void zsyr2k(char *uplo, char *trans, int *n, int *k, z *alpha, z *a, int *lda, z *b, int *ldb, z *beta, z *c, int *ldc, int *char_len_uplo, int *char_len_trans)
++void zsyrk(char *uplo, char *trans, int *n, int *k, z *alpha, z *a, int *lda, z *beta, z *c, int *ldc, int *char_len_uplo, int *char_len_trans)
++void ztbmv(char *uplo, char *trans, char *diag, int *n, int *k, z *a, int *lda, z *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
++void ztbsv(char *uplo, char *trans, char *diag, int *n, int *k, z *a, int *lda, z *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
++void ztpmv(char *uplo, char *trans, char *diag, int *n, z *ap, z *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
++void ztpsv(char *uplo, char *trans, char *diag, int *n, z *ap, z *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
++void ztrmm(char *side, char *uplo, char *transa, char *diag, int *m, int *n, z *alpha, z *a, int *lda, z *b, int *ldb, int *char_len_side, int *char_len_uplo, int *char_len_transa, int *char_len_diag)
++void ztrmv(char *uplo, char *trans, char *diag, int *n, z *a, int *lda, z *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
++void ztrsm(char *side, char *uplo, char *transa, char *diag, int *m, int *n, z *alpha, z *a, int *lda, z *b, int *ldb, int *char_len_side, int *char_len_uplo, int *char_len_transa, int *char_len_diag)
++void ztrsv(char *uplo, char *trans, char *diag, int *n, z *a, int *lda, z *x, int *incx, int *char_len_uplo, int *char_len_trans, int *char_len_diag)
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/ccolumn_bmod.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/ccolumn_bmod.c
+index 030ddc1..624a87e 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/ccolumn_bmod.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/ccolumn_bmod.c
+@@ -231,7 +231,7 @@ ccolumn_bmod (
+ 		       &nsupr, tempv, &incx );
+ #else		
+ 		ctrsv_( "L", "N", "U", &segsze, &lusup[luptr], 
+-		       &nsupr, tempv, &incx );
++		       &nsupr, tempv, &incx, 1, 1, 1);
+ #endif		
+  		luptr += segsze;  /* Dense matrix-vector */
+ 		tempv1 = &tempv[segsze];
+@@ -242,7 +242,7 @@ ccolumn_bmod (
+ 		       &nsupr, tempv, &incx, &beta, tempv1, &incy );
+ #else
+ 		cgemv_( "N", &nrow, &segsze, &alpha, &lusup[luptr], 
+-		       &nsupr, tempv, &incx, &beta, tempv1, &incy );
++		       &nsupr, tempv, &incx, &beta, tempv1, &incy, 1);
+ #endif
+ #else
+ 		clsolve ( nsupr, segsze, &lusup[luptr], tempv );
+@@ -331,7 +331,7 @@ ccolumn_bmod (
+ 	       &nsupr, &lusup[ufirst], &incx );
+ #else
+ 	ctrsv_( "L", "N", "U", &nsupc, &lusup[luptr], 
+-	       &nsupr, &lusup[ufirst], &incx );
++	       &nsupr, &lusup[ufirst], &incx, 1, 1, 1);
+ #endif
+ 	
+ 	alpha = none; beta = one; /* y := beta*y + alpha*A*x */
+@@ -341,7 +341,7 @@ ccolumn_bmod (
+ 	       &lusup[ufirst], &incx, &beta, &lusup[ufirst+nsupc], &incy );
+ #else
+ 	cgemv_( "N", &nrow, &nsupc, &alpha, &lusup[luptr+nsupc], &nsupr,
+-	       &lusup[ufirst], &incx, &beta, &lusup[ufirst+nsupc], &incy );
++	       &lusup[ufirst], &incx, &beta, &lusup[ufirst+nsupc], &incy, 1);
+ #endif
+ #else
+ 	clsolve ( nsupr, nsupc, &lusup[luptr], &lusup[ufirst] );
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/cgsrfs.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/cgsrfs.c
+index ee4014b..416849d 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/cgsrfs.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/cgsrfs.c
+@@ -175,8 +175,8 @@ cgsrfs(trans_t trans, SuperMatrix *A, SuperMatrix *L, SuperMatrix *U,
+     extern int CCOPY(int *, singlecomplex *, int *, singlecomplex *, int *);
+     extern int CSAXPY(int *, singlecomplex *, singlecomplex *, int *, singlecomplex *, int *);
+ #else
+-    extern int ccopy_(int *, singlecomplex *, int *, singlecomplex *, int *);
+-    extern int caxpy_(int *, singlecomplex *, singlecomplex *, int *, singlecomplex *, int *);
++    extern void ccopy_(int *, singlecomplex *, int *, singlecomplex *, int *);
++    extern void caxpy_(int *, singlecomplex *, singlecomplex *, int *, singlecomplex *, int *);
+ #endif
+ 
+     Astore = A->Store;
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/cgstrs.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/cgstrs.c
+index 589d29a..4010970 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/cgstrs.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/cgstrs.c
+@@ -194,11 +194,11 @@ cgstrs (trans_t trans, SuperMatrix *L, SuperMatrix *U,
+ 			&beta, &work[0], &n );
+ #else
+ 		ctrsm_("L", "L", "N", "U", &nsupc, &nrhs, &alpha,
+-		       &Lval[luptr], &nsupr, &Bmat[fsupc], &ldb);
++		       &Lval[luptr], &nsupr, &Bmat[fsupc], &ldb, 1, 1, 1, 1);
+ 		
+ 		cgemm_( "N", "N", &nrow, &nrhs, &nsupc, &alpha, 
+ 			&Lval[luptr+nsupc], &nsupr, &Bmat[fsupc], &ldb, 
+-			&beta, &work[0], &n );
++			&beta, &work[0], &n, 1, 1);
+ #endif
+ 		for (j = 0; j < nrhs; j++) {
+ 		    rhs_work = &Bmat[(size_t)j * (size_t)ldb];
+@@ -265,7 +265,7 @@ cgstrs (trans_t trans, SuperMatrix *L, SuperMatrix *U,
+ 		       &Lval[luptr], &nsupr, &Bmat[fsupc], &ldb);
+ #else
+ 		ctrsm_("L", "U", "N", "N", &nsupc, &nrhs, &alpha,
+-		       &Lval[luptr], &nsupr, &Bmat[fsupc], &ldb);
++		       &Lval[luptr], &nsupr, &Bmat[fsupc], &ldb, 1, 1, 1, 1);
+ #endif
+ #else		
+ 		for (j = 0; j < nrhs; j++)
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/clacon2.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/clacon2.c
+index 8c08f23..abbb1e2 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/clacon2.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/clacon2.c
+@@ -106,7 +106,7 @@ clacon2_(int *n, singlecomplex *v, singlecomplex *x, float *est, int *kase, int
+     extern float smach(char *);
+     extern int icmax1_slu(int *, singlecomplex *, int *);
+     extern double scsum1_slu(int *, singlecomplex *, int *);
+-    extern int ccopy_(int *, singlecomplex *, int *, singlecomplex *, int *);
++    extern void ccopy_(int *, singlecomplex *, int *, singlecomplex *, int *);
+ 
+     safmin = smach("Safe minimum");
+     if ( *kase == 0 ) {
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/cpanel_bmod.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/cpanel_bmod.c
+index 7b9a611..531b167 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/cpanel_bmod.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/cpanel_bmod.c
+@@ -236,7 +236,7 @@ cpanel_bmod (
+ 			   &nsupr, TriTmp, &incx );
+ #else
+ 		    ctrsv_( "L", "N", "U", &segsze, &lusup[luptr], 
+-			   &nsupr, TriTmp, &incx );
++			   &nsupr, TriTmp, &incx, 1, 1, 1);
+ #endif
+ #else		
+ 		    clsolve ( nsupr, segsze, &lusup[luptr], TriTmp );
+@@ -283,7 +283,7 @@ cpanel_bmod (
+ 			   &nsupr, TriTmp, &incx, &beta, MatvecTmp, &incy);
+ #else
+ 		    cgemv_("N", &block_nrow, &segsze, &alpha, &lusup[luptr1], 
+-			   &nsupr, TriTmp, &incx, &beta, MatvecTmp, &incy);
++			   &nsupr, TriTmp, &incx, &beta, MatvecTmp, &incy, 1);
+ #endif
+ #else
+ 		    cmatvec(nsupr, block_nrow, segsze, &lusup[luptr1],
+@@ -435,7 +435,7 @@ cpanel_bmod (
+ 		   }
+ #endif
+ 		    ctrsv_( "L", "N", "U", &segsze, &lusup[luptr], 
+-			   &nsupr, tempv, &incx );
++			   &nsupr, tempv, &incx, 1, 1, 1);
+ #endif
+ 		    
+ 		    luptr += segsze;	/* Dense matrix-vector */
+@@ -447,7 +447,7 @@ cpanel_bmod (
+ 			   &nsupr, tempv, &incx, &beta, tempv1, &incy );
+ #else
+ 		    cgemv_( "N", &nrow, &segsze, &alpha, &lusup[luptr], 
+-			   &nsupr, tempv, &incx, &beta, tempv1, &incy );
++			   &nsupr, tempv, &incx, &beta, tempv1, &incy, 1);
+ #endif
+ #else
+ 		    clsolve ( nsupr, segsze, &lusup[luptr], tempv );
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/csnode_bmod.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/csnode_bmod.c
+index 1dffaca..da72175 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/csnode_bmod.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/csnode_bmod.c
+@@ -112,9 +112,9 @@ csnode_bmod (
+        }
+ #endif
+ 	ctrsv_( "L", "N", "U", &nsupc, &lusup[luptr], &nsupr, 
+-	      &lusup[ufirst], &incx );
++	      &lusup[ufirst], &incx, 1, 1, 1);
+ 	cgemv_( "N", &nrow, &nsupc, &alpha, &lusup[luptr+nsupc], &nsupr, 
+-		&lusup[ufirst], &incx, &beta, &lusup[ufirst+nsupc], &incy );
++		&lusup[ufirst], &incx, &beta, &lusup[ufirst+nsupc], &incy, 1);
+ #endif
+ #else
+ 	clsolve ( nsupr, nsupc, &lusup[luptr], &lusup[ufirst] );
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/csp_blas2.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/csp_blas2.c
+index be964fe..48f201d 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/csp_blas2.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/csp_blas2.c
+@@ -163,10 +163,10 @@ sp_ctrsv(char *uplo, char *trans, char *diag, SuperMatrix *L,
+ 		       	&nsupr, &x[fsupc], &incx, &beta, &work[0], &incy);
+ #else
+ 		    ctrsv_("L", "N", "U", &nsupc, &Lval[luptr], &nsupr,
+-		       	&x[fsupc], &incx);
++		       	&x[fsupc], &incx, 1, 1, 1);
+ 		
+ 		    cgemv_("N", &nrow, &nsupc, &alpha, &Lval[luptr+nsupc], 
+-		       	&nsupr, &x[fsupc], &incx, &beta, &work[0], &incy);
++		       	&nsupr, &x[fsupc], &incx, &beta, &work[0], &incy, 1);
+ #endif
+ #else
+ 		    clsolve ( nsupr, nsupc, &Lval[luptr], &x[fsupc]);
+@@ -213,7 +213,7 @@ sp_ctrsv(char *uplo, char *trans, char *diag, SuperMatrix *L,
+ 		       &x[fsupc], &incx);
+ #else
+ 		    ctrsv_("U", "N", "N", &nsupc, &Lval[luptr], &nsupr,
+-                           &x[fsupc], &incx);
++                           &x[fsupc], &incx, 1, 1, 1);
+ #endif
+ #else		
+ 		    cusolve ( nsupr, nsupc, &Lval[luptr], &x[fsupc] );
+@@ -268,7 +268,7 @@ sp_ctrsv(char *uplo, char *trans, char *diag, SuperMatrix *L,
+ 			&x[fsupc], &incx);
+ #else
+ 		    ctrsv_("L", "T", "U", &nsupc, &Lval[luptr], &nsupr,
+-			&x[fsupc], &incx);
++			&x[fsupc], &incx, 1, 1, 1);
+ #endif
+ 		}
+ 	    }
+@@ -305,7 +305,7 @@ sp_ctrsv(char *uplo, char *trans, char *diag, SuperMatrix *L,
+ 			    &x[fsupc], &incx);
+ #else
+ 		    ctrsv_("U", "T", "N", &nsupc, &Lval[luptr], &nsupr,
+-			    &x[fsupc], &incx);
++			    &x[fsupc], &incx, 1, 1, 1);
+ #endif
+ 		}
+ 	    } /* for k ... */
+@@ -347,7 +347,7 @@ sp_ctrsv(char *uplo, char *trans, char *diag, SuperMatrix *L,
+ 			&x[fsupc], &incx);
+ #else
+                     ctrsv_("L", trans, "U", &nsupc, &Lval[luptr], &nsupr,
+-                           &x[fsupc], &incx);
++                           &x[fsupc], &incx, 1, 1, 1);
+ #endif
+ 		}
+ 	    }
+@@ -386,7 +386,7 @@ sp_ctrsv(char *uplo, char *trans, char *diag, SuperMatrix *L,
+ 			    &x[fsupc], &incx);
+ #else
+                     ctrsv_("U", trans, "N", &nsupc, &Lval[luptr], &nsupr,
+-                               &x[fsupc], &incx);
++                               &x[fsupc], &incx, 1, 1, 1);
+ #endif
+   		}
+   	    } /* for k ... */
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dcolumn_bmod.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dcolumn_bmod.c
+index 8bcf0e4..60779fb 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dcolumn_bmod.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dcolumn_bmod.c
+@@ -218,7 +218,7 @@ dcolumn_bmod (
+ 		       &nsupr, tempv, &incx );
+ #else		
+ 		dtrsv_( "L", "N", "U", &segsze, &lusup[luptr], 
+-		       &nsupr, tempv, &incx );
++		       &nsupr, tempv, &incx, 1, 1, 1);
+ #endif		
+  		luptr += segsze;  /* Dense matrix-vector */
+ 		tempv1 = &tempv[segsze];
+@@ -229,7 +229,7 @@ dcolumn_bmod (
+ 		       &nsupr, tempv, &incx, &beta, tempv1, &incy );
+ #else
+ 		dgemv_( "N", &nrow, &segsze, &alpha, &lusup[luptr], 
+-		       &nsupr, tempv, &incx, &beta, tempv1, &incy );
++		       &nsupr, tempv, &incx, &beta, tempv1, &incy, 1);
+ #endif
+ #else
+ 		dlsolve ( nsupr, segsze, &lusup[luptr], tempv );
+@@ -318,7 +318,7 @@ dcolumn_bmod (
+ 	       &nsupr, &lusup[ufirst], &incx );
+ #else
+ 	dtrsv_( "L", "N", "U", &nsupc, &lusup[luptr], 
+-	       &nsupr, &lusup[ufirst], &incx );
++	       &nsupr, &lusup[ufirst], &incx, 1, 1, 1);
+ #endif
+ 	
+ 	alpha = none; beta = one; /* y := beta*y + alpha*A*x */
+@@ -328,7 +328,7 @@ dcolumn_bmod (
+ 	       &lusup[ufirst], &incx, &beta, &lusup[ufirst+nsupc], &incy );
+ #else
+ 	dgemv_( "N", &nrow, &nsupc, &alpha, &lusup[luptr+nsupc], &nsupr,
+-	       &lusup[ufirst], &incx, &beta, &lusup[ufirst+nsupc], &incy );
++	       &lusup[ufirst], &incx, &beta, &lusup[ufirst+nsupc], &incy, 1);
+ #endif
+ #else
+ 	dlsolve ( nsupr, nsupc, &lusup[luptr], &lusup[ufirst] );
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dgsrfs.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dgsrfs.c
+index ebda1a1..367be39 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dgsrfs.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dgsrfs.c
+@@ -175,8 +175,8 @@ dgsrfs(trans_t trans, SuperMatrix *A, SuperMatrix *L, SuperMatrix *U,
+     extern int SCOPY(int *, double *, int *, double *, int *);
+     extern int SSAXPY(int *, double *, double *, int *, double *, int *);
+ #else
+-    extern int dcopy_(int *, double *, int *, double *, int *);
+-    extern int daxpy_(int *, double *, double *, int *, double *, int *);
++    extern void dcopy_(int *, double *, int *, double *, int *);
++    extern void daxpy_(int *, double *, double *, int *, double *, int *);
+ #endif
+ 
+     Astore = A->Store;
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dgstrs.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dgstrs.c
+index c399f49..02070d7 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dgstrs.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dgstrs.c
+@@ -192,11 +192,11 @@ dgstrs (trans_t trans, SuperMatrix *L, SuperMatrix *U,
+ 			&beta, &work[0], &n );
+ #else
+ 		dtrsm_("L", "L", "N", "U", &nsupc, &nrhs, &alpha,
+-		       &Lval[luptr], &nsupr, &Bmat[fsupc], &ldb);
++		       &Lval[luptr], &nsupr, &Bmat[fsupc], &ldb, 1, 1, 1, 1);
+ 		
+ 		dgemm_( "N", "N", &nrow, &nrhs, &nsupc, &alpha, 
+ 			&Lval[luptr+nsupc], &nsupr, &Bmat[fsupc], &ldb, 
+-			&beta, &work[0], &n );
++			&beta, &work[0], &n, 1, 1);
+ #endif
+ 		for (j = 0; j < nrhs; j++) {
+ 		    rhs_work = &Bmat[(size_t)j * (size_t)ldb];
+@@ -261,7 +261,7 @@ dgstrs (trans_t trans, SuperMatrix *L, SuperMatrix *U,
+ 		       &Lval[luptr], &nsupr, &Bmat[fsupc], &ldb);
+ #else
+ 		dtrsm_("L", "U", "N", "N", &nsupc, &nrhs, &alpha,
+-		       &Lval[luptr], &nsupr, &Bmat[fsupc], &ldb);
++		       &Lval[luptr], &nsupr, &Bmat[fsupc], &ldb, 1, 1, 1, 1);
+ #endif
+ #else		
+ 		for (j = 0; j < nrhs; j++)
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dlacon2.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dlacon2.c
+index 79476fe..4895470 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dlacon2.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dlacon2.c
+@@ -105,7 +105,7 @@ dlacon2_(int *n, double *v, double *x, int *isgn, double *est, int *kase, int is
+ #else
+     extern int idamax_(int *, double *, int *);
+     extern double dasum_(int *, double *, int *);
+-    extern int dcopy_(int *, double *, int *, double *, int *);
++    extern void dcopy_(int *, double *, int *, double *, int *);
+ #endif
+ #define d_sign(a, b) (b >= 0 ? fabs(a) : -fabs(a))    /* Copy sign */
+ #define i_dnnt(a) \
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dpanel_bmod.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dpanel_bmod.c
+index 5202349..07b0cf5 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dpanel_bmod.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dpanel_bmod.c
+@@ -222,7 +222,7 @@ dpanel_bmod (
+ 			   &nsupr, TriTmp, &incx );
+ #else
+ 		    dtrsv_( "L", "N", "U", &segsze, &lusup[luptr], 
+-			   &nsupr, TriTmp, &incx );
++			   &nsupr, TriTmp, &incx, 1, 1, 1);
+ #endif
+ #else		
+ 		    dlsolve ( nsupr, segsze, &lusup[luptr], TriTmp );
+@@ -269,7 +269,7 @@ dpanel_bmod (
+ 			   &nsupr, TriTmp, &incx, &beta, MatvecTmp, &incy);
+ #else
+ 		    dgemv_("N", &block_nrow, &segsze, &alpha, &lusup[luptr1], 
+-			   &nsupr, TriTmp, &incx, &beta, MatvecTmp, &incy);
++			   &nsupr, TriTmp, &incx, &beta, MatvecTmp, &incy, 1);
+ #endif
+ #else
+ 		    dmatvec(nsupr, block_nrow, segsze, &lusup[luptr1],
+@@ -407,7 +407,7 @@ dpanel_bmod (
+ 		   }
+ #endif
+ 		    dtrsv_( "L", "N", "U", &segsze, &lusup[luptr], 
+-			   &nsupr, tempv, &incx );
++			   &nsupr, tempv, &incx, 1, 1, 1);
+ #endif
+ 		    
+ 		    luptr += segsze;	/* Dense matrix-vector */
+@@ -419,7 +419,7 @@ dpanel_bmod (
+ 			   &nsupr, tempv, &incx, &beta, tempv1, &incy );
+ #else
+ 		    dgemv_( "N", &nrow, &segsze, &alpha, &lusup[luptr], 
+-			   &nsupr, tempv, &incx, &beta, tempv1, &incy );
++			   &nsupr, tempv, &incx, &beta, tempv1, &incy, 1);
+ #endif
+ #else
+ 		    dlsolve ( nsupr, segsze, &lusup[luptr], tempv );
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dsnode_bmod.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dsnode_bmod.c
+index e3cff55..94258f2 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dsnode_bmod.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dsnode_bmod.c
+@@ -111,9 +111,9 @@ dsnode_bmod (
+        }
+ #endif
+ 	dtrsv_( "L", "N", "U", &nsupc, &lusup[luptr], &nsupr, 
+-	      &lusup[ufirst], &incx );
++	      &lusup[ufirst], &incx, 1, 1, 1);
+ 	dgemv_( "N", &nrow, &nsupc, &alpha, &lusup[luptr+nsupc], &nsupr, 
+-		&lusup[ufirst], &incx, &beta, &lusup[ufirst+nsupc], &incy );
++		&lusup[ufirst], &incx, &beta, &lusup[ufirst+nsupc], &incy, 1);
+ #endif
+ #else
+ 	dlsolve ( nsupr, nsupc, &lusup[luptr], &lusup[ufirst] );
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dsp_blas2.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dsp_blas2.c
+index d8135df..34a84ae 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dsp_blas2.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/dsp_blas2.c
+@@ -159,10 +159,10 @@ sp_dtrsv(char *uplo, char *trans, char *diag, SuperMatrix *L,
+ 		       	&nsupr, &x[fsupc], &incx, &beta, &work[0], &incy);
+ #else
+ 		    dtrsv_("L", "N", "U", &nsupc, &Lval[luptr], &nsupr,
+-		       	&x[fsupc], &incx);
++		       	&x[fsupc], &incx, 1, 1, 1);
+ 		
+ 		    dgemv_("N", &nrow, &nsupc, &alpha, &Lval[luptr+nsupc], 
+-		       	&nsupr, &x[fsupc], &incx, &beta, &work[0], &incy);
++		       	&nsupr, &x[fsupc], &incx, &beta, &work[0], &incy, 1);
+ #endif
+ #else
+ 		    dlsolve ( nsupr, nsupc, &Lval[luptr], &x[fsupc]);
+@@ -207,7 +207,7 @@ sp_dtrsv(char *uplo, char *trans, char *diag, SuperMatrix *L,
+ 		       &x[fsupc], &incx);
+ #else
+ 		    dtrsv_("U", "N", "N", &nsupc, &Lval[luptr], &nsupr,
+-                           &x[fsupc], &incx);
++                           &x[fsupc], &incx, 1, 1, 1);
+ #endif
+ #else		
+ 		    dusolve ( nsupr, nsupc, &Lval[luptr], &x[fsupc] );
+@@ -260,7 +260,7 @@ sp_dtrsv(char *uplo, char *trans, char *diag, SuperMatrix *L,
+ 			&x[fsupc], &incx);
+ #else
+ 		    dtrsv_("L", "T", "U", &nsupc, &Lval[luptr], &nsupr,
+-			&x[fsupc], &incx);
++			&x[fsupc], &incx, 1, 1, 1);
+ #endif
+ 		}
+ 	    }
+@@ -295,7 +295,7 @@ sp_dtrsv(char *uplo, char *trans, char *diag, SuperMatrix *L,
+ 			    &x[fsupc], &incx);
+ #else
+ 		    dtrsv_("U", "T", "N", &nsupc, &Lval[luptr], &nsupr,
+-			    &x[fsupc], &incx);
++			    &x[fsupc], &incx, 1, 1, 1);
+ #endif
+ 		}
+ 	    } /* for k ... */
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/scolumn_bmod.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/scolumn_bmod.c
+index 4381e10..5c51251 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/scolumn_bmod.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/scolumn_bmod.c
+@@ -218,7 +218,7 @@ scolumn_bmod (
+ 		       &nsupr, tempv, &incx );
+ #else		
+ 		strsv_( "L", "N", "U", &segsze, &lusup[luptr], 
+-		       &nsupr, tempv, &incx );
++		       &nsupr, tempv, &incx, 1, 1, 1);
+ #endif		
+  		luptr += segsze;  /* Dense matrix-vector */
+ 		tempv1 = &tempv[segsze];
+@@ -229,7 +229,7 @@ scolumn_bmod (
+ 		       &nsupr, tempv, &incx, &beta, tempv1, &incy );
+ #else
+ 		sgemv_( "N", &nrow, &segsze, &alpha, &lusup[luptr], 
+-		       &nsupr, tempv, &incx, &beta, tempv1, &incy );
++		       &nsupr, tempv, &incx, &beta, tempv1, &incy, 1);
+ #endif
+ #else
+ 		slsolve ( nsupr, segsze, &lusup[luptr], tempv );
+@@ -318,7 +318,7 @@ scolumn_bmod (
+ 	       &nsupr, &lusup[ufirst], &incx );
+ #else
+ 	strsv_( "L", "N", "U", &nsupc, &lusup[luptr], 
+-	       &nsupr, &lusup[ufirst], &incx );
++	       &nsupr, &lusup[ufirst], &incx, 1, 1, 1);
+ #endif
+ 	
+ 	alpha = none; beta = one; /* y := beta*y + alpha*A*x */
+@@ -328,7 +328,7 @@ scolumn_bmod (
+ 	       &lusup[ufirst], &incx, &beta, &lusup[ufirst+nsupc], &incy );
+ #else
+ 	sgemv_( "N", &nrow, &nsupc, &alpha, &lusup[luptr+nsupc], &nsupr,
+-	       &lusup[ufirst], &incx, &beta, &lusup[ufirst+nsupc], &incy );
++	       &lusup[ufirst], &incx, &beta, &lusup[ufirst+nsupc], &incy, 1);
+ #endif
+ #else
+ 	slsolve ( nsupr, nsupc, &lusup[luptr], &lusup[ufirst] );
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/sgsrfs.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/sgsrfs.c
+index 406fbb0..36a0d33 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/sgsrfs.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/sgsrfs.c
+@@ -175,8 +175,8 @@ sgsrfs(trans_t trans, SuperMatrix *A, SuperMatrix *L, SuperMatrix *U,
+     extern int SCOPY(int *, float *, int *, float *, int *);
+     extern int SSAXPY(int *, float *, float *, int *, float *, int *);
+ #else
+-    extern int scopy_(int *, float *, int *, float *, int *);
+-    extern int saxpy_(int *, float *, float *, int *, float *, int *);
++    extern void scopy_(int *, float *, int *, float *, int *);
++    extern void saxpy_(int *, float *, float *, int *, float *, int *);
+ #endif
+ 
+     Astore = A->Store;
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/sgstrs.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/sgstrs.c
+index ffa8bda..3c6c148 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/sgstrs.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/sgstrs.c
+@@ -192,11 +192,11 @@ sgstrs (trans_t trans, SuperMatrix *L, SuperMatrix *U,
+ 			&beta, &work[0], &n );
+ #else
+ 		strsm_("L", "L", "N", "U", &nsupc, &nrhs, &alpha,
+-		       &Lval[luptr], &nsupr, &Bmat[fsupc], &ldb);
++		       &Lval[luptr], &nsupr, &Bmat[fsupc], &ldb, 1, 1, 1, 1);
+ 		
+ 		sgemm_( "N", "N", &nrow, &nrhs, &nsupc, &alpha, 
+ 			&Lval[luptr+nsupc], &nsupr, &Bmat[fsupc], &ldb, 
+-			&beta, &work[0], &n );
++			&beta, &work[0], &n, 1, 1);
+ #endif
+ 		for (j = 0; j < nrhs; j++) {
+ 		    rhs_work = &Bmat[(size_t)j * (size_t)ldb];
+@@ -261,7 +261,7 @@ sgstrs (trans_t trans, SuperMatrix *L, SuperMatrix *U,
+ 		       &Lval[luptr], &nsupr, &Bmat[fsupc], &ldb);
+ #else
+ 		strsm_("L", "U", "N", "N", &nsupc, &nrhs, &alpha,
+-		       &Lval[luptr], &nsupr, &Bmat[fsupc], &ldb);
++		       &Lval[luptr], &nsupr, &Bmat[fsupc], &ldb, 1, 1, 1, 1);
+ #endif
+ #else		
+ 		for (j = 0; j < nrhs; j++)
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/slacon2.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/slacon2.c
+index e8ab5af..39bc8ed 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/slacon2.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/slacon2.c
+@@ -105,7 +105,7 @@ slacon2_(int *n, float *v, float *x, int *isgn, float *est, int *kase, int isave
+ #else
+     extern int isamax_(int *, float *, int *);
+     extern float sasum_(int *, float *, int *);
+-    extern int scopy_(int *, float *, int *, float *, int *);
++    extern void scopy_(int *, float *, int *, float *, int *);
+ #endif
+ #define d_sign(a, b) (b >= 0 ? fabs(a) : -fabs(a))    /* Copy sign */
+ #define i_dnnt(a) \
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/slu_cdefs.h b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/slu_cdefs.h
+index a809fd5..ba0bc2b 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/slu_cdefs.h
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/slu_cdefs.h
+@@ -262,15 +262,15 @@ extern void    ccheck_tempv(int, singlecomplex *);
+ 
+ /*! \brief BLAS */
+ 
+-extern int cgemm_(const char*, const char*, const int*, const int*, const int*,
++extern void cgemm_(const char*, const char*, const int*, const int*, const int*,
+                   const singlecomplex*, const singlecomplex*, const int*, const singlecomplex*,
+-		  const int*, const singlecomplex*, singlecomplex*, const int*);
+-extern int ctrsv_(char*, char*, char*, int*, singlecomplex*, int*,
+-                  singlecomplex*, int*);
+-extern int ctrsm_(char*, char*, char*, char*, int*, int*,
+-                  singlecomplex*, singlecomplex*, int*, singlecomplex*, int*);
+-extern int cgemv_(char *, int *, int *, singlecomplex *, singlecomplex *a, int *,
+-                  singlecomplex *, int *, singlecomplex *, singlecomplex *, int *);
++		  const int*, const singlecomplex*, singlecomplex*, const int*, int, int);
++extern void ctrsv_(char*, char*, char*, int*, singlecomplex*, int*,
++                  singlecomplex*, int*, int, int, int);
++extern void ctrsm_(char*, char*, char*, char*, int*, int*,
++                  singlecomplex*, singlecomplex*, int*, singlecomplex*, int*, int, int, int, int);
++extern void cgemv_(char *, int *, int *, singlecomplex *, singlecomplex *a, int *,
++                  singlecomplex *, int *, singlecomplex *, singlecomplex *, int *, int);
+ 
+ extern void cusolve(int, int, singlecomplex*, singlecomplex*);
+ extern void clsolve(int, int, singlecomplex*, singlecomplex*);
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/slu_ddefs.h b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/slu_ddefs.h
+index 3b5aa50..1d43796 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/slu_ddefs.h
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/slu_ddefs.h
+@@ -260,15 +260,15 @@ extern void    dcheck_tempv(int, double *);
+ 
+ /*! \brief BLAS */
+ 
+-extern int dgemm_(const char*, const char*, const int*, const int*, const int*,
++extern void dgemm_(const char*, const char*, const int*, const int*, const int*,
+                   const double*, const double*, const int*, const double*,
+-		  const int*, const double*, double*, const int*);
+-extern int dtrsv_(char*, char*, char*, int*, double*, int*,
+-                  double*, int*);
+-extern int dtrsm_(char*, char*, char*, char*, int*, int*,
+-                  double*, double*, int*, double*, int*);
+-extern int dgemv_(char *, int *, int *, double *, double *a, int *,
+-                  double *, int *, double *, double *, int *);
++		  const int*, const double*, double*, const int*, int, int);
++extern void dtrsv_(char*, char*, char*, int*, double*, int*,
++                  double*, int*, int, int, int);
++extern void dtrsm_(char*, char*, char*, char*, int*, int*,
++                  double*, double*, int*, double*, int*, int, int, int, int);
++extern void dgemv_(char *, int *, int *, double *, double *a, int *,
++                  double *, int *, double *, double *, int *, int);
+ 
+ extern void dusolve(int, int, double*, double*);
+ extern void dlsolve(int, int, double*, double*);
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/slu_sdefs.h b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/slu_sdefs.h
+index 99eed2d..b3ccd78 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/slu_sdefs.h
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/slu_sdefs.h
+@@ -259,15 +259,15 @@ extern void    scheck_tempv(int, float *);
+ 
+ /*! \brief BLAS */
+ 
+-extern int sgemm_(const char*, const char*, const int*, const int*, const int*,
++extern void sgemm_(const char*, const char*, const int*, const int*, const int*,
+                   const float*, const float*, const int*, const float*,
+-		  const int*, const float*, float*, const int*);
+-extern int strsv_(char*, char*, char*, int*, float*, int*,
+-                  float*, int*);
+-extern int strsm_(char*, char*, char*, char*, int*, int*,
+-                  float*, float*, int*, float*, int*);
+-extern int sgemv_(char *, int *, int *, float *, float *a, int *,
+-                  float *, int *, float *, float *, int *);
++		  const int*, const float*, float*, const int*, int, int);
++extern void strsv_(char*, char*, char*, int*, float*, int*,
++                  float*, int*, int, int, int);
++extern void strsm_(char*, char*, char*, char*, int*, int*,
++                  float*, float*, int*, float*, int*, int, int, int, int);
++extern void sgemv_(char *, int *, int *, float *, float *a, int *,
++                  float *, int *, float *, float *, int *, int);
+ 
+ extern void susolve(int, int, float*, float*);
+ extern void slsolve(int, int, float*, float*);
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/slu_zdefs.h b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/slu_zdefs.h
+index e4b306e..ffbd753 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/slu_zdefs.h
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/slu_zdefs.h
+@@ -262,15 +262,15 @@ extern void    zcheck_tempv(int, doublecomplex *);
+ 
+ /*! \brief BLAS */
+ 
+-extern int zgemm_(const char*, const char*, const int*, const int*, const int*,
++extern void zgemm_(const char*, const char*, const int*, const int*, const int*,
+                   const doublecomplex*, const doublecomplex*, const int*, const doublecomplex*,
+-		  const int*, const doublecomplex*, doublecomplex*, const int*);
+-extern int ztrsv_(char*, char*, char*, int*, doublecomplex*, int*,
+-                  doublecomplex*, int*);
+-extern int ztrsm_(char*, char*, char*, char*, int*, int*,
+-                  doublecomplex*, doublecomplex*, int*, doublecomplex*, int*);
+-extern int zgemv_(char *, int *, int *, doublecomplex *, doublecomplex *a, int *,
+-                  doublecomplex *, int *, doublecomplex *, doublecomplex *, int *);
++		  const int*, const doublecomplex*, doublecomplex*, const int*, int, int);
++extern void ztrsv_(char*, char*, char*, int*, doublecomplex*, int*,
++                  doublecomplex*, int*, int, int, int);
++extern void ztrsm_(char*, char*, char*, char*, int*, int*,
++                  doublecomplex*, doublecomplex*, int*, doublecomplex*, int*, int, int, int, int);
++extern void zgemv_(char *, int *, int *, doublecomplex *, doublecomplex *a, int *,
++                  doublecomplex *, int *, doublecomplex *, doublecomplex *, int *, int);
+ 
+ extern void zusolve(int, int, doublecomplex*, doublecomplex*);
+ extern void zlsolve(int, int, doublecomplex*, doublecomplex*);
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/spanel_bmod.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/spanel_bmod.c
+index 77f585c..702c450 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/spanel_bmod.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/spanel_bmod.c
+@@ -222,7 +222,7 @@ spanel_bmod (
+ 			   &nsupr, TriTmp, &incx );
+ #else
+ 		    strsv_( "L", "N", "U", &segsze, &lusup[luptr], 
+-			   &nsupr, TriTmp, &incx );
++			   &nsupr, TriTmp, &incx, 1, 1, 1);
+ #endif
+ #else		
+ 		    slsolve ( nsupr, segsze, &lusup[luptr], TriTmp );
+@@ -269,7 +269,7 @@ spanel_bmod (
+ 			   &nsupr, TriTmp, &incx, &beta, MatvecTmp, &incy);
+ #else
+ 		    sgemv_("N", &block_nrow, &segsze, &alpha, &lusup[luptr1], 
+-			   &nsupr, TriTmp, &incx, &beta, MatvecTmp, &incy);
++			   &nsupr, TriTmp, &incx, &beta, MatvecTmp, &incy, 1);
+ #endif
+ #else
+ 		    smatvec(nsupr, block_nrow, segsze, &lusup[luptr1],
+@@ -407,7 +407,7 @@ spanel_bmod (
+ 		   }
+ #endif
+ 		    strsv_( "L", "N", "U", &segsze, &lusup[luptr], 
+-			   &nsupr, tempv, &incx );
++			   &nsupr, tempv, &incx, 1, 1, 1);
+ #endif
+ 		    
+ 		    luptr += segsze;	/* Dense matrix-vector */
+@@ -419,7 +419,7 @@ spanel_bmod (
+ 			   &nsupr, tempv, &incx, &beta, tempv1, &incy );
+ #else
+ 		    sgemv_( "N", &nrow, &segsze, &alpha, &lusup[luptr], 
+-			   &nsupr, tempv, &incx, &beta, tempv1, &incy );
++			   &nsupr, tempv, &incx, &beta, tempv1, &incy, 1);
+ #endif
+ #else
+ 		    slsolve ( nsupr, segsze, &lusup[luptr], tempv );
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/ssnode_bmod.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/ssnode_bmod.c
+index da1ee1d..dba1d28 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/ssnode_bmod.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/ssnode_bmod.c
+@@ -111,9 +111,9 @@ ssnode_bmod (
+        }
+ #endif
+ 	strsv_( "L", "N", "U", &nsupc, &lusup[luptr], &nsupr, 
+-	      &lusup[ufirst], &incx );
++	      &lusup[ufirst], &incx, 1, 1, 1);
+ 	sgemv_( "N", &nrow, &nsupc, &alpha, &lusup[luptr+nsupc], &nsupr, 
+-		&lusup[ufirst], &incx, &beta, &lusup[ufirst+nsupc], &incy );
++		&lusup[ufirst], &incx, &beta, &lusup[ufirst+nsupc], &incy, 1);
+ #endif
+ #else
+ 	slsolve ( nsupr, nsupc, &lusup[luptr], &lusup[ufirst] );
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/ssp_blas2.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/ssp_blas2.c
+index 6aa7369..9db9e3e 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/ssp_blas2.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/ssp_blas2.c
+@@ -159,10 +159,10 @@ sp_strsv(char *uplo, char *trans, char *diag, SuperMatrix *L,
+ 		       	&nsupr, &x[fsupc], &incx, &beta, &work[0], &incy);
+ #else
+ 		    strsv_("L", "N", "U", &nsupc, &Lval[luptr], &nsupr,
+-		       	&x[fsupc], &incx);
++		       	&x[fsupc], &incx, 1, 1, 1);
+ 		
+ 		    sgemv_("N", &nrow, &nsupc, &alpha, &Lval[luptr+nsupc], 
+-		       	&nsupr, &x[fsupc], &incx, &beta, &work[0], &incy);
++		       	&nsupr, &x[fsupc], &incx, &beta, &work[0], &incy, 1);
+ #endif
+ #else
+ 		    slsolve ( nsupr, nsupc, &Lval[luptr], &x[fsupc]);
+@@ -207,7 +207,7 @@ sp_strsv(char *uplo, char *trans, char *diag, SuperMatrix *L,
+ 		       &x[fsupc], &incx);
+ #else
+ 		    strsv_("U", "N", "N", &nsupc, &Lval[luptr], &nsupr,
+-                           &x[fsupc], &incx);
++                           &x[fsupc], &incx, 1, 1, 1);
+ #endif
+ #else		
+ 		    susolve ( nsupr, nsupc, &Lval[luptr], &x[fsupc] );
+@@ -260,7 +260,7 @@ sp_strsv(char *uplo, char *trans, char *diag, SuperMatrix *L,
+ 			&x[fsupc], &incx);
+ #else
+ 		    strsv_("L", "T", "U", &nsupc, &Lval[luptr], &nsupr,
+-			&x[fsupc], &incx);
++			&x[fsupc], &incx, 1, 1, 1);
+ #endif
+ 		}
+ 	    }
+@@ -295,7 +295,7 @@ sp_strsv(char *uplo, char *trans, char *diag, SuperMatrix *L,
+ 			    &x[fsupc], &incx);
+ #else
+ 		    strsv_("U", "T", "N", &nsupc, &Lval[luptr], &nsupr,
+-			    &x[fsupc], &incx);
++			    &x[fsupc], &incx, 1, 1, 1);
+ #endif
+ 		}
+ 	    } /* for k ... */
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zcolumn_bmod.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zcolumn_bmod.c
+index d445dcc..c67eb21 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zcolumn_bmod.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zcolumn_bmod.c
+@@ -233,7 +233,7 @@ zcolumn_bmod (
+ 		       &nsupr, tempv, &incx );
+ #else		
+ 		ztrsv_( "L", "N", "U", &segsze, &lusup[luptr], 
+-		       &nsupr, tempv, &incx );
++		       &nsupr, tempv, &incx, 1, 1, 1);
+ #endif		
+  		luptr += segsze;  /* Dense matrix-vector */
+ 		tempv1 = &tempv[segsze];
+@@ -244,7 +244,7 @@ zcolumn_bmod (
+ 		       &nsupr, tempv, &incx, &beta, tempv1, &incy );
+ #else
+ 		zgemv_( "N", &nrow, &segsze, &alpha, &lusup[luptr], 
+-		       &nsupr, tempv, &incx, &beta, tempv1, &incy );
++		       &nsupr, tempv, &incx, &beta, tempv1, &incy, 1);
+ #endif
+ #else
+ 		zlsolve ( nsupr, segsze, &lusup[luptr], tempv );
+@@ -333,7 +333,7 @@ zcolumn_bmod (
+ 	       &nsupr, &lusup[ufirst], &incx );
+ #else
+ 	ztrsv_( "L", "N", "U", &nsupc, &lusup[luptr], 
+-	       &nsupr, &lusup[ufirst], &incx );
++	       &nsupr, &lusup[ufirst], &incx, 1, 1, 1);
+ #endif
+ 	
+ 	alpha = none; beta = one; /* y := beta*y + alpha*A*x */
+@@ -343,7 +343,7 @@ zcolumn_bmod (
+ 	       &lusup[ufirst], &incx, &beta, &lusup[ufirst+nsupc], &incy );
+ #else
+ 	zgemv_( "N", &nrow, &nsupc, &alpha, &lusup[luptr+nsupc], &nsupr,
+-	       &lusup[ufirst], &incx, &beta, &lusup[ufirst+nsupc], &incy );
++	       &lusup[ufirst], &incx, &beta, &lusup[ufirst+nsupc], &incy, 1);
+ #endif
+ #else
+ 	zlsolve ( nsupr, nsupc, &lusup[luptr], &lusup[ufirst] );
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zgsrfs.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zgsrfs.c
+index 9540e04..0c365e5 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zgsrfs.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zgsrfs.c
+@@ -175,8 +175,8 @@ zgsrfs(trans_t trans, SuperMatrix *A, SuperMatrix *L, SuperMatrix *U,
+     extern int CCOPY(int *, doublecomplex *, int *, doublecomplex *, int *);
+     extern int CSAXPY(int *, doublecomplex *, doublecomplex *, int *, doublecomplex *, int *);
+ #else
+-    extern int zcopy_(int *, doublecomplex *, int *, doublecomplex *, int *);
+-    extern int zaxpy_(int *, doublecomplex *, doublecomplex *, int *, doublecomplex *, int *);
++    extern void zcopy_(int *, doublecomplex *, int *, doublecomplex *, int *);
++    extern void zaxpy_(int *, doublecomplex *, doublecomplex *, int *, doublecomplex *, int *);
+ #endif
+ 
+     Astore = A->Store;
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zgstrs.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zgstrs.c
+index d40f64f..2339f86 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zgstrs.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zgstrs.c
+@@ -194,11 +194,11 @@ zgstrs (trans_t trans, SuperMatrix *L, SuperMatrix *U,
+ 			&beta, &work[0], &n );
+ #else
+ 		ztrsm_("L", "L", "N", "U", &nsupc, &nrhs, &alpha,
+-		       &Lval[luptr], &nsupr, &Bmat[fsupc], &ldb);
++		       &Lval[luptr], &nsupr, &Bmat[fsupc], &ldb, 1, 1, 1, 1);
+ 		
+ 		zgemm_( "N", "N", &nrow, &nrhs, &nsupc, &alpha, 
+ 			&Lval[luptr+nsupc], &nsupr, &Bmat[fsupc], &ldb, 
+-			&beta, &work[0], &n );
++			&beta, &work[0], &n, 1, 1);
+ #endif
+ 		for (j = 0; j < nrhs; j++) {
+ 		    rhs_work = &Bmat[(size_t)j * (size_t)ldb];
+@@ -265,7 +265,7 @@ zgstrs (trans_t trans, SuperMatrix *L, SuperMatrix *U,
+ 		       &Lval[luptr], &nsupr, &Bmat[fsupc], &ldb);
+ #else
+ 		ztrsm_("L", "U", "N", "N", &nsupc, &nrhs, &alpha,
+-		       &Lval[luptr], &nsupr, &Bmat[fsupc], &ldb);
++		       &Lval[luptr], &nsupr, &Bmat[fsupc], &ldb, 1, 1, 1, 1);
+ #endif
+ #else		
+ 		for (j = 0; j < nrhs; j++)
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zlacon2.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zlacon2.c
+index 386b99c..d9f35da 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zlacon2.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zlacon2.c
+@@ -106,7 +106,7 @@ zlacon2_(int *n, doublecomplex *v, doublecomplex *x, double *est, int *kase, int
+     extern double dmach(char *);
+     extern int izmax1_slu(int *, doublecomplex *, int *);
+     extern double dzsum1_slu(int *, doublecomplex *, int *);
+-    extern int zcopy_(int *, doublecomplex *, int *, doublecomplex *, int *);
++    extern void zcopy_(int *, doublecomplex *, int *, doublecomplex *, int *);
+ 
+     safmin = dmach("Safe minimum");
+     if ( *kase == 0 ) {
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zpanel_bmod.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zpanel_bmod.c
+index 8390fcd..8e78507 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zpanel_bmod.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zpanel_bmod.c
+@@ -242,7 +242,7 @@ zpanel_bmod (
+ 		   }
+ #endif
+ 		    ztrsv_( "L", "N", "U", &segsze, &lusup[luptr], 
+-			   &nsupr, TriTmp, &incx );
++			   &nsupr, TriTmp, &incx, 1, 1, 1);
+ #endif
+ #else		
+ 		    zlsolve ( nsupr, segsze, &lusup[luptr], TriTmp );
+@@ -289,7 +289,7 @@ zpanel_bmod (
+ 			   &nsupr, TriTmp, &incx, &beta, MatvecTmp, &incy);
+ #else
+ 		    zgemv_("N", &block_nrow, &segsze, &alpha, &lusup[luptr1], 
+-			   &nsupr, TriTmp, &incx, &beta, MatvecTmp, &incy);
++			   &nsupr, TriTmp, &incx, &beta, MatvecTmp, &incy, 1);
+ #endif
+ #else
+ 		    zmatvec(nsupr, block_nrow, segsze, &lusup[luptr1],
+@@ -435,7 +435,7 @@ zpanel_bmod (
+ 			   &nsupr, tempv, &incx );
+ #else
+ 		    ztrsv_( "L", "N", "U", &segsze, &lusup[luptr], 
+-			   &nsupr, tempv, &incx );
++			   &nsupr, tempv, &incx, 1, 1, 1);
+ #endif
+ 		    
+ 		    luptr += segsze;	/* Dense matrix-vector */
+@@ -447,7 +447,7 @@ zpanel_bmod (
+ 			   &nsupr, tempv, &incx, &beta, tempv1, &incy );
+ #else
+ 		    zgemv_( "N", &nrow, &segsze, &alpha, &lusup[luptr], 
+-			   &nsupr, tempv, &incx, &beta, tempv1, &incy );
++			   &nsupr, tempv, &incx, &beta, tempv1, &incy, 1);
+ #endif
+ #else
+ 		    zlsolve ( nsupr, segsze, &lusup[luptr], tempv );
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zsnode_bmod.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zsnode_bmod.c
+index 4015b23..cbb4a80 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zsnode_bmod.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zsnode_bmod.c
+@@ -112,9 +112,9 @@ zsnode_bmod (
+        }
+ #endif
+ 	ztrsv_( "L", "N", "U", &nsupc, &lusup[luptr], &nsupr, 
+-	      &lusup[ufirst], &incx );
++	      &lusup[ufirst], &incx, 1, 1, 1);
+ 	zgemv_( "N", &nrow, &nsupc, &alpha, &lusup[luptr+nsupc], &nsupr, 
+-		&lusup[ufirst], &incx, &beta, &lusup[ufirst+nsupc], &incy );
++		&lusup[ufirst], &incx, &beta, &lusup[ufirst+nsupc], &incy, 1);
+ #endif
+ #else
+ 	zlsolve ( nsupr, nsupc, &lusup[luptr], &lusup[ufirst] );
+diff --git a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zsp_blas2.c b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zsp_blas2.c
+index 7bb7eb4..335d1f8 100644
+--- a/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zsp_blas2.c
++++ b/scipy/sparse/linalg/_dsolve/SuperLU/SRC/zsp_blas2.c
+@@ -163,10 +163,10 @@ sp_ztrsv(char *uplo, char *trans, char *diag, SuperMatrix *L,
+ 		       	&nsupr, &x[fsupc], &incx, &beta, &work[0], &incy);
+ #else
+ 		    ztrsv_("L", "N", "U", &nsupc, &Lval[luptr], &nsupr,
+-		       	&x[fsupc], &incx);
++		       	&x[fsupc], &incx, 1, 1, 1);
+ 		
+ 		    zgemv_("N", &nrow, &nsupc, &alpha, &Lval[luptr+nsupc], 
+-		       	&nsupr, &x[fsupc], &incx, &beta, &work[0], &incy);
++		       	&nsupr, &x[fsupc], &incx, &beta, &work[0], &incy, 1);
+ #endif
+ #else
+ 		    zlsolve ( nsupr, nsupc, &Lval[luptr], &x[fsupc]);
+@@ -213,7 +213,7 @@ sp_ztrsv(char *uplo, char *trans, char *diag, SuperMatrix *L,
+ 		       &x[fsupc], &incx);
+ #else
+ 		    ztrsv_("U", "N", "N", &nsupc, &Lval[luptr], &nsupr,
+-                           &x[fsupc], &incx);
++                           &x[fsupc], &incx, 1, 1, 1);
+ #endif
+ #else		
+ 		    zusolve ( nsupr, nsupc, &Lval[luptr], &x[fsupc] );
+@@ -268,7 +268,7 @@ sp_ztrsv(char *uplo, char *trans, char *diag, SuperMatrix *L,
+ 			&x[fsupc], &incx);
+ #else
+ 		    ztrsv_("L", "T", "U", &nsupc, &Lval[luptr], &nsupr,
+-			&x[fsupc], &incx);
++			&x[fsupc], &incx, 1, 1, 1);
+ #endif
+ 		}
+ 	    }
+@@ -305,7 +305,7 @@ sp_ztrsv(char *uplo, char *trans, char *diag, SuperMatrix *L,
+ 			    &x[fsupc], &incx);
+ #else
+ 		    ztrsv_("U", "T", "N", &nsupc, &Lval[luptr], &nsupr,
+-			    &x[fsupc], &incx);
++			    &x[fsupc], &incx, 1, 1, 1);
+ #endif
+ 		}
+ 	    } /* for k ... */
+@@ -347,7 +347,7 @@ sp_ztrsv(char *uplo, char *trans, char *diag, SuperMatrix *L,
+ 			&x[fsupc], &incx);
+ #else
+                     ztrsv_("L", trans, "U", &nsupc, &Lval[luptr], &nsupr,
+-                           &x[fsupc], &incx);
++                           &x[fsupc], &incx, 1, 1, 1);
+ #endif
+ 		}
+ 	    }
+@@ -386,7 +386,7 @@ sp_ztrsv(char *uplo, char *trans, char *diag, SuperMatrix *L,
+ 			    &x[fsupc], &incx);
+ #else
+                     ztrsv_("U", trans, "N", &nsupc, &Lval[luptr], &nsupr,
+-                               &x[fsupc], &incx);
++                               &x[fsupc], &incx, 1, 1, 1);
+ #endif
+   		}
+   	    } /* for k ... */
